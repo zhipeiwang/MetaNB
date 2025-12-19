@@ -1,0 +1,197 @@
+# summarizer for forest plot function
+summarize_mcmc_outputs <- function(
+    samples,
+    study_info = NULL,
+    targets = c("NB", "probharmful"),
+    targets_per_study = c("NB"),
+    return_ref = FALSE
+) {
+  ss <- summary(samples)
+  stats  <- ss$statistics
+  quants <- ss$quantiles
+
+  # ---- helpers ----
+  get_cri <- function(name) {
+    if (!name %in% rownames(stats)) return(NULL)
+    c(
+      mean = stats[name, "Mean"],
+      low  = quants[name, "2.5%"],
+      high = quants[name, "97.5%"]
+    )
+  }
+
+  get_pi <- function(name) {
+    if (!name %in% rownames(stats)) return(NULL)
+    c(
+      low  = quants[name, "2.5%"],
+      high = quants[name, "97.5%"]
+    )
+  }
+
+  get_mean_only <- function(name) {
+    if (!name %in% rownames(stats)) return(NULL)
+    c(mean = stats[name, "Mean"])
+  }
+
+  # ---- family specification ----
+  family_spec <- list(
+    NB = list(
+      per_study_base = "NB",
+
+      pooled = list(
+        model     = "pooledNB",
+        treat_all = "pooledNB_TA"
+      ),
+
+      predictive = list(
+        model     = "NBnew",
+        treat_all = "NBnew_TA"
+      ),
+
+      pooled_ref = list(
+        model     = "pooledNB_ref",
+        treat_all = "pooledNB_TA_ref"
+      ),
+
+      pred_ref = list(
+        model     = "NBnew_ref",
+        treat_all = "NBnew_TA_ref"
+      )
+    ),
+
+    RU = list(
+      per_study_base = "RU",
+      pooled = list(model = "pooledRU"),
+      predictive = list(model = "RUnew"),
+      pooled_ref = list(model = "pooledRU_ref"),
+      pred_ref = list(model = "RUnew_ref")
+    ),
+
+    probharmful = list(
+      per_study_base = NULL,
+      pooled = list(model = "probharmful"),
+      predictive = NULL,
+      pooled_ref = list(model = "probharmful_ref"),
+      pred_ref = NULL
+    )
+  )
+
+  out <- list()
+
+  for (tar in targets) {
+
+    # -------------------------------
+    # CASE 1: family target (NB / RU / probharmful)
+    # -------------------------------
+    if (tar %in% names(family_spec)) {
+
+      spec <- family_spec[[tar]]
+
+      # ---- per-study ----
+      per_study <- NULL
+      if (!is.null(spec$per_study_base) && tar %in% targets_per_study) {
+
+        pat  <- paste0("^", spec$per_study_base, "\\[\\d+\\]$")
+        rows <- grep(pat, rownames(stats), value = TRUE)
+
+        if (length(rows) > 0) {
+          if (is.null(study_info)) {
+            stop("study_info required for per-study summaries of ", tar)
+          }
+
+          idx <- as.integer(sub(paste0("^", spec$per_study_base, "\\[(\\d+)\\]$"),
+                                "\\1", rows))
+          ord <- order(idx)
+
+          per_study <- study_info %>%
+            dplyr::mutate(.idx = dplyr::row_number()) %>%
+            dplyr::arrange(.idx) %>%
+            dplyr::mutate(
+              mean = stats[rows, "Mean"][ord],
+              low  = quants[rows, "2.5%"][ord],
+              high = quants[rows, "97.5%"][ord]
+            ) %>%
+            dplyr::select(-.idx)
+        }
+      }
+
+      # ---- pooled (CrI) ----
+      pooled <- list()
+      if (!is.null(spec$pooled)) {
+        for (k in names(spec$pooled)) {
+          pooled[[k]] <- get_cri(spec$pooled[[k]])
+        }
+        pooled <- pooled[!sapply(pooled, is.null)]
+        if (length(pooled) == 0) pooled <- NULL
+      }
+
+      # ---- predictive (PI) ----
+      predictive <- list()
+      if (!is.null(spec$predictive)) {
+        for (k in names(spec$predictive)) {
+          predictive[[k]] <- get_pi(spec$predictive[[k]])
+        }
+        predictive <- predictive[!sapply(predictive, is.null)]
+        if (length(predictive) == 0) predictive <- NULL
+      }
+
+      # ---- pooled_ref (CrI) ----
+      pooled_ref <- NULL
+      if (return_ref && !is.null(spec$pooled_ref)) {
+        pooled_ref <- list()
+        for (k in names(spec$pooled_ref)) {
+          pooled_ref[[k]] <- get_cri(spec$pooled_ref[[k]])
+        }
+        pooled_ref <- pooled_ref[!sapply(pooled_ref, is.null)]
+        if (length(pooled_ref) == 0) pooled_ref <- NULL
+      }
+
+      # ---- pred_ref (PI or mean-only) ----
+      pred_ref <- NULL
+      if (return_ref && !is.null(spec$pred_ref)) {
+        pred_ref <- list()
+        for (k in names(spec$pred_ref)) {
+          pred_ref[[k]] <- get_pi(spec$pred_ref[[k]])
+        }
+        pred_ref <- pred_ref[!sapply(pred_ref, is.null)]
+        if (length(pred_ref) == 0) pred_ref <- NULL
+      }
+
+      # ---- probharmful special case (mean only) ----
+      if (tar == "probharmful") {
+        pooled <- list(model = get_mean_only("probharmful"))
+        if (return_ref) {
+          pooled_ref <- list(model = get_mean_only("probharmful_ref"))
+        }
+        predictive <- NULL
+        pred_ref   <- NULL
+      }
+
+      out[[tar]] <- list(
+        per_study  = per_study,
+        pooled     = pooled,
+        predictive = predictive,
+        pooled_ref = pooled_ref,
+        pred_ref   = pred_ref
+      )
+
+    } else {
+
+      # -------------------------------
+      # CASE 2: atomic variable name
+      # -------------------------------
+      scalar <- NULL
+      if (tar %in% rownames(stats)) {
+        if (tar %in% rownames(quants)) {
+          scalar <- get_cri(tar)
+        } else {
+          scalar <- get_mean_only(tar)
+        }
+      }
+
+      out[[tar]] <- list(scalar = scalar)
+    }
+  }
+
+  out
+}
