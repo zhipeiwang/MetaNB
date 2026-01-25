@@ -75,8 +75,8 @@ NBnew_TA<-prevnew-(1-prevnew)*t/(1-t)
 NBnew_ref<-sensnew*prev_ref-(1-specnew)*(1-prev_ref)*t/(1-t)
 NBnew_TA_ref<-prev_ref-(1-prev_ref)*t/(1-t)
 
-probharmful<-1-equals(max(max(NBnew,NBnew_TA),0), NBnew)
-probharmful_ref<-1-equals(max(max(NBnew_ref,NBnew_TA_ref),0), NBnew_ref)
+probuseful<-equals(max(max(NBnew,NBnew_TA),0), NBnew)
+probuseful_ref<-equals(max(max(NBnew_ref,NBnew_TA_ref),0), NBnew_ref)
 
 RUnew<-(NBnew - max(NBnew_TA, 0) ) / (prevnew - max(NBnew_TA, 0))
 RUnew_ref<-(NBnew_ref - max(NBnew_TA_ref, 0) ) / (prev_ref - max(NBnew_TA_ref, 0))

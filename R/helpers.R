@@ -2,7 +2,7 @@
 summarize_mcmc_outputs <- function(
     samples,
     study_info = NULL,
-    targets = c("NB", "probharmful"),
+    targets = c("NB", "probuseful"),
     targets_per_study = c("NB"),
     return_ref = FALSE
 ) {
@@ -14,23 +14,24 @@ summarize_mcmc_outputs <- function(
   get_cri <- function(name) {
     if (!name %in% rownames(stats)) return(NULL)
     c(
-      mean = stats[name, "Mean"],
-      low  = quants[name, "2.5%"],
-      high = quants[name, "97.5%"]
+      Mean = stats[name, "Mean"],
+      Median = quants[name, "50%"],
+      Low  = quants[name, "2.5%"],
+      High = quants[name, "97.5%"]
     )
   }
 
   get_pi <- function(name) {
     if (!name %in% rownames(stats)) return(NULL)
     c(
-      low  = quants[name, "2.5%"],
-      high = quants[name, "97.5%"]
+      Low  = quants[name, "2.5%"],
+      High = quants[name, "97.5%"]
     )
   }
 
   get_mean_only <- function(name) {
     if (!name %in% rownames(stats)) return(NULL)
-    c(mean = stats[name, "Mean"])
+    c(Mean = stats[name, "Mean"])
   }
 
   # ---- family specification ----
@@ -67,11 +68,11 @@ summarize_mcmc_outputs <- function(
       pred_ref = list(model = "RUnew_ref")
     ),
 
-    probharmful = list(
+    probuseful = list(
       per_study_base = NULL,
-      pooled = list(model = "probharmful"),
+      pooled = list(model = "probuseful"),
       predictive = NULL,
-      pooled_ref = list(model = "probharmful_ref"),
+      pooled_ref = list(model = "probuseful_ref"),
       pred_ref = NULL
     )
   )
@@ -81,7 +82,7 @@ summarize_mcmc_outputs <- function(
   for (tar in targets) {
 
     # -------------------------------
-    # CASE 1: family target (NB / RU / probharmful)
+    # CASE 1: family target (NB / RU / probuseful)
     # -------------------------------
     if (tar %in% names(family_spec)) {
 
@@ -107,9 +108,10 @@ summarize_mcmc_outputs <- function(
             dplyr::mutate(.idx = dplyr::row_number()) %>%
             dplyr::arrange(.idx) %>%
             dplyr::mutate(
-              mean = stats[rows, "Mean"][ord],
-              low  = quants[rows, "2.5%"][ord],
-              high = quants[rows, "97.5%"][ord]
+              Mean = stats[rows, "Mean"][ord],
+              Median = quants[rows, "50%"][ord],
+              Low  = quants[rows, "2.5%"][ord],
+              High = quants[rows, "97.5%"][ord]
             ) %>%
             dplyr::select(-.idx)
         }
@@ -157,11 +159,11 @@ summarize_mcmc_outputs <- function(
         if (length(pred_ref) == 0) pred_ref <- NULL
       }
 
-      # ---- probharmful special case (mean only) ----
-      if (tar == "probharmful") {
-        pooled <- list(model = get_mean_only("probharmful"))
+      # ---- probuseful special case (mean only) ----
+      if (tar == "probuseful") {
+        pooled <- list(model = get_mean_only("probuseful"))
         if (return_ref) {
-          pooled_ref <- list(model = get_mean_only("probharmful_ref"))
+          pooled_ref <- list(model = get_mean_only("probuseful_ref"))
         }
         predictive <- NULL
         pred_ref   <- NULL

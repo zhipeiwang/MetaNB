@@ -98,7 +98,7 @@ specnew<-exp(logitspec.new)/(1+exp(logitspec.new))
 NBnew<-sensnew*prevnew-(1-specnew)*(1-prevnew)*t/(1-t)
 NBnew_TA<-prevnew-(1-prevnew)*t/(1-t)
 
-probharmful<-1-equals(max(max(NBnew,NBnew_TA),0), NBnew)
+probuseful<-equals(max(max(NBnew,NBnew_TA),0), NBnew)
 
 RUnew<-(NBnew - max(NBnew_TA, 0) ) / (prevnew - max(NBnew_TA, 0))
 
@@ -117,7 +117,7 @@ specnew.ref<-exp(logitspec.new.ref)/(1+exp(logitspec.new.ref))
 NBnew_ref<- sensnew.ref*prev_ref-(1-specnew.ref)*(1-prev_ref)*t/(1-t)
 NBnew_TA_ref<-prev_ref-(1-prev_ref)*t/(1-t)
 
-probharmful_ref<-1-equals(max(max(NBnew_ref,NBnew_TA_ref),0),NBnew_ref)
+probuseful_ref<-equals(max(max(NBnew_ref,NBnew_TA_ref),0),NBnew_ref)
 
 RUnew_ref<-(NBnew_ref - max(NBnew_TA_ref, 0) ) / (prev_ref - max(NBnew_TA_ref, 0))
 

@@ -1,147 +1,39 @@
-plot_nb_forest_forestploter <- function(sum_nb,
-                                        xlim = c(-0.1, 0.7),
-                                        file_png = NULL,
-                                        file_pdf = NULL) {
-
-  # ---------- CHECK IF COUNTRY COLUMN IS PRESENT ----------
-  has_country <- "Country" %in% names(sum_nb$per_study)
-
-  # ---------- 1. Per-study table (sorted by NB) ----------
-  per <- sum_nb$per_study %>%
-    arrange(NB)
-
-  df <- per %>%
-    mutate(
-      Publication = Publication,
-      Country     = if (has_country) Country else NULL,
-      N           = as.character(N),
-      Prev        = percent(Prev, accuracy = 1),
-      ` `         = strrep(" ", 40),  # blank column for CI panel
-      `NB (95% CrI)` = sprintf("%.2f  [%.2f; %.2f]", NB, NB_low, NB_high)
-    )
-
-  # dynamically choose columns based on availability of Country
-  df <- if (has_country) {
-    df %>% select(Publication, Country, N, Prev, ` `, `NB (95% CrI)`)
-  } else {
-    df %>% select(Publication, N, Prev, ` `, `NB (95% CrI)`)
-  }
-
-  # ---------- 2. Pooled row ----------
-  pooled_mean <- unname(sum_nb$pooled["mean"])
-  pooled_low  <- unname(sum_nb$pooled["low"])
-  pooled_high <- unname(sum_nb$pooled["high"])
-
-  pooled_row <- tibble(
-    Publication = "Random effects model",
-    Country     = if (has_country) "" else NULL,
-    N = "", Prev = "",
-    ` ` = strrep(" ", 40),
-    `NB (95% CrI)` =
-      sprintf("%.2f  [%.2f; %.2f]", pooled_mean, pooled_low, pooled_high)
-  )
-
-  if (!has_country) pooled_row$Country <- NULL
-
-  # ---------- 3. Prediction interval row ----------
-  pred_low  <- unname(sum_nb$pred["low"])
-  pred_high <- unname(sum_nb$pred["high"])
-
-  pred_row <- tibble(
-    Publication = "Prediction interval",
-    Country     = if (has_country) "" else NULL,
-    N = "", Prev = "",
-    ` ` = strrep(" ", 40),
-    `NB (95% CrI)` = sprintf("[%.2f; %.2f]", pred_low, pred_high)
-  )
-
-  if (!has_country) pred_row$Country <- NULL
-
-  # ---------- 4. Combine table ----------
-  tbl <- bind_rows(df, pooled_row, pred_row) %>%
-    mutate(across(everything(), as.character))
-
-  # ---------- 5. Numeric vectors ----------
-  est   <- c(per$NB, pooled_mean, NA)    # NA = hide pred interval point
-  lower <- c(per$NB_low, pooled_low, NA)
-  upper <- c(per$NB_high, pooled_high, NA)
-
-  is_sum <- c(rep(FALSE, nrow(per)), TRUE, FALSE)
-
-  ci_col <- which(names(tbl) == " ")
-
-  # ---------- 6. Theme ----------
-  tm <- forest_theme(
-    base_size    = 10,
-    summary_fill = "grey20",
-    summary_col  = "grey20",
-    point_size   = 2
-  )
-
-  # ---------- 7. Draw main forest ----------
-  p <- forestploter::forest(
-    tbl,
-    est        = est,
-    lower      = lower,
-    upper      = upper,
-    is_summary = is_sum,
-    ci_column  = ci_col,
-    xlab       = "Net Benefit",
-    xlim       = xlim,
-    ref_line   = 0,
-    theme      = tm
-  )
-
-  # ---------- 7B. Prediction interval thick bar ----------
-  npc_x <- function(x) (x - xlim[1]) / diff(xlim)
-
-  p <- add_grob(
-    p,
-    row = nrow(tbl), col = ci_col,
-    gb_fn = segmentsGrob,
-    x0 = unit(npc_x(pred_low),  "npc"),
-    x1 = unit(npc_x(pred_high), "npc"),
-    y0 = unit(0.5, "npc"),
-    y1 = unit(0.5, "npc"),
-    gp = gpar(lwd = 6)
-  )
-
-  # ---------- Display ----------
-  plot(p)
-
-  # ---------- 8. Save ----------
-  wh <- get_wh(p, unit = "in")
-
-  if (!is.null(file_png)) {
-    png(file_png, width = wh[1], height = wh[2],
-        units = "in", res = 300, bg = "white")
-    plot(p)
-    dev.off()
-  }
-
-  if (!is.null(file_pdf)) {
-    grDevices::cairo_pdf(file_pdf, width = wh[1], height = wh[2], bg = "white")
-    plot(p)
-    dev.off()
-  }
-
-  invisible(p)
-}
-
-
 plot_forest_metric_forestploter <- function(
     sum,
     metric = c("NB", "RU"),
+    center = c("Median", "Mean"),
     xlim = NULL,
+    plot_col_width = 50,
     file_png = NULL,
     file_pdf = NULL
 ) {
   metric <- match.arg(metric)
   sum_m  <- sum[[metric]]
 
+  if (is.null(sum_m$per_study)) {
+    stop("No per-study results found for metric ", metric,
+         ". Did you return RU[i] in MA_NB_tri() and summarize it?")
+  }
+
   if (is.null(sum_m)) {
     stop("Metric ", metric, " not found in summary object.")
   }
+
+  center_missing <- missing(center)
+  center <- match.arg(center)
+
+  if (center_missing) {
+    message("Using center = '", center, "' (default). Set center = 'Mean' if desired.")
+  } else {
+    message("Using center = '", center, "'.")
+  }
+
+  # P(useful) (NB only)
+  prob_useful <- NULL
+  if (metric == "NB" && "probuseful" %in% names(sum)) {
+    prob_useful <- sum$probuseful$pooled$model["Mean"]
+  }
+  show_pu <- (metric == "NB") && !is.null(prob_useful)
 
   # ---------- LABELS ----------
   xlab <- if (metric == "NB") "Net Benefit" else "Relative Utility"
@@ -152,7 +44,7 @@ plot_forest_metric_forestploter <- function(
 
   # ---------- 1. Per-study table (sorted by mean) ----------
   per <- sum_m$per_study %>%
-    dplyr::arrange(mean)
+    dplyr::arrange(.data[[center]])
 
   df <- per %>%
     dplyr::mutate(
@@ -160,8 +52,8 @@ plot_forest_metric_forestploter <- function(
       Country     = if (has_country) Country else NULL,
       N           = as.character(N),
       Prev        = scales::percent(Prev, accuracy = 1),
-      ` `         = strrep(" ", 40),
-      value_ci    = sprintf("%.2f  [%.2f; %.2f]", mean, low, high)
+      ` `         = strrep(" ", plot_col_width),
+      value_ci    = sprintf("%5.2f  [%.2f; %.2f]", .data[[center]], Low, High)
     )
 
   df <- if (has_country) {
@@ -176,12 +68,12 @@ plot_forest_metric_forestploter <- function(
   pooled <- sum_m$pooled$model
 
   pooled_row <- tibble::tibble(
-    Publication = "Random effects model",
+    Publication = "Pooled estimate",
     Country     = if (has_country) "" else NULL,
     N = "", Prev = "",
-    ` ` = strrep(" ", 40),
-    value_ci = sprintf("%.2f  [%.2f; %.2f]",
-                       pooled["mean"], pooled["low"], pooled["high"])
+    ` ` = strrep(" ", plot_col_width),
+    value_ci = sprintf("%5.2f  [%.2f; %.2f]",
+                       pooled[center], pooled["Low"], pooled["High"])
   )
 
   if (!has_country) pooled_row$Country <- NULL
@@ -194,28 +86,77 @@ plot_forest_metric_forestploter <- function(
     Publication = "Prediction interval",
     Country     = if (has_country) "" else NULL,
     N = "", Prev = "",
-    ` ` = strrep(" ", 40),
-    value_ci = sprintf("[%.2f; %.2f]", pred["low"], pred["high"])
+    ` ` = strrep(" ", plot_col_width),
+    value_ci = sprintf("[%.2f; %.2f]", pred["Low"], pred["High"])
   )
 
   if (!has_country) pred_row$Country <- NULL
   names(pred_row)[ncol(pred_row)] <- col_label
 
+  # ---------- 3B. P(useful) row (text only) ----------
+  pu_row <- NULL
+  if (show_pu) {
+    pu_row <- tibble::tibble(
+      Publication = "P(useful)",
+      Country     = if (has_country) "" else NULL,
+      N = "", Prev = "",
+      ` ` = strrep(" ", plot_col_width),
+      value_ci = sprintf("%5.2f", prob_useful)
+    )
+    if (!has_country) pu_row$Country <- NULL
+    names(pu_row)[ncol(pu_row)] <- col_label
+  }
+
+
+
   # ---------- 4. Combine table ----------
-  tbl <- dplyr::bind_rows(df, pooled_row, pred_row) %>%
+  tbl <- dplyr::bind_rows(df, pooled_row, pred_row, pu_row) %>%
     dplyr::mutate(dplyr::across(everything(), as.character))
 
   # ---------- 5. Numeric vectors ----------
-  est   <- c(per$mean, pooled["mean"], NA)
-  lower <- c(per$low,  pooled["low"],  NA)
-  upper <- c(per$high, pooled["high"], NA)
+  # base vectors (studies + pooled + prediction interval)
+  est   <- c(per[[center]], pooled[center], NA)
+  lower <- c(per$Low,       pooled["Low"],  NA)
+  upper <- c(per$High,      pooled["High"], NA)
 
-  is_sum <- c(rep(FALSE, nrow(per)), TRUE, FALSE)
+  is_sum <- c(
+    rep(FALSE, nrow(per)),
+    TRUE,
+    FALSE
+  )
+
+  # add one more entry ONLY if P(useful) row exists
+  if (show_pu) {
+    est   <- c(est,   NA)
+    lower <- c(lower, NA)
+    upper <- c(upper, NA)
+    is_sum <- c(is_sum, FALSE)
+  }
   ci_col <- which(names(tbl) == " ")
+
+  # ---------- 5B. X-limits (avoid truncation) ----------
+  if (is.null(xlim)) {
+    # Include study CIs + pooled CI + prediction interval
+    all_limits <- c(lower, upper)
+
+    # pred is a named vector with Low/High in your summarizer
+    all_limits <- c(all_limits, pred["Low"], pred["High"])
+
+    xlim <- range(all_limits, na.rm = TRUE)
+
+    # add a bit of padding
+    pad <- 0.05 * diff(xlim)
+    if (is.finite(pad) && pad > 0) xlim <- xlim + c(-pad, pad)
+  }
+
+  # ensure 0 is visible (but do NOT force axis to start at 0)
+  xlim[1] <- min(xlim[1], 0, na.rm = TRUE)
+  xlim[2] <- max(xlim[2], 0, na.rm = TRUE)
 
   # ---------- 6. Theme ----------
   tm <- forestploter::forest_theme(
     base_size    = 10,
+    refline_gp   = grid::gpar(lty = "solid"),
     summary_fill = "grey20",
     summary_col  = "grey20",
     point_size   = 2
@@ -232,6 +173,7 @@ plot_forest_metric_forestploter <- function(
     xlab       = xlab,
     xlim       = xlim,
     ref_line   = 0,
+    vert_line = pooled[center],
     theme      = tm
   )
 
@@ -240,13 +182,14 @@ plot_forest_metric_forestploter <- function(
 
   p <- forestploter::add_grob(
     p,
-    row = nrow(tbl), col = ci_col,
+    row = nrow(per) + 2, # the prediction interval row is always after the pooled row
+    col = ci_col,
     gb_fn = grid::segmentsGrob,
-    x0 = grid::unit(npc_x(pred["low"]),  "npc"),
-    x1 = grid::unit(npc_x(pred["high"]), "npc"),
+    x0 = grid::unit(npc_x(pred["Low"]),  "npc"),
+    x1 = grid::unit(npc_x(pred["High"]), "npc"),
     y0 = grid::unit(0.5, "npc"),
     y1 = grid::unit(0.5, "npc"),
-    gp = grid::gpar(lwd = 6)
+    gp = grid::gpar(lwd = 3)
   )
 
   # ---------- Display ----------

@@ -1,4 +1,4 @@
-setwd("C:/Users/P70096364/OneDrive - Maastricht University/MetaNB/R")
+# setwd("C:/Users/P70096364/OneDrive - Maastricht University/MetaNB/R")
 
 lapply(c("MA_NB_tri.R", "model_text_weak.R", "model_text_wishart.R", "helpers.R", "plot_forest.R"), source)
 load("data_examples.RData")
@@ -7,8 +7,9 @@ load("data_examples.RData")
 library(rjags)
 library(coda)
 library(tidyverse)
+library(forestploter)
 
-MA_NBCA125_weak <- MA_NB_tri(data_ADNEXCA125, prior = "weak", t = 0.1, return_vars = c("NB", "RU", "probharmful"))
+MA_NBCA125_weak <- MA_NB_tri(data_ADNEXCA125, prior = "weak", t = 0.1, return_vars = c("NB", "RU", "probuseful", "NBnew", "NBnew_TA"))
 
 attributes(MA_NBCA125_weak)
 
@@ -17,7 +18,7 @@ summary(MA_NBCA125_weak)
 sum <- summarize_mcmc_outputs(
   MA_NBCA125_weak,
   study_info = study_info_ADNEXCA125,
-  targets = c("NB", "RU", "probharmful"),
+  targets = c("NB", "RU", "probuseful"),
   targets_per_study = c("NB", "RU"),
   return_ref = TRUE
 )
@@ -27,6 +28,7 @@ sum
 plot_forest_metric_forestploter(
   sum,
   metric = "NB",
+#  center = "Median",
   xlim = c(-0.1, 0.7),
   file_png = "forest_nb.png",
   file_pdf = "forest_nb.pdf"
@@ -35,7 +37,7 @@ plot_forest_metric_forestploter(
 plot_forest_metric_forestploter(
   sum,
   metric = "RU",
-  xlim = c(0, 2),
+  xlim = c(-0.1, 1),
   file_png = "forest_ru.png",
   file_pdf = "forest_ru.pdf"
 )
@@ -99,3 +101,16 @@ MA_ovarian_t01_wishart <- MA_NB_tri(data_ovarian_t01, prior = "wishart", t = 0.1
                                         return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
                                                         "NBnew_ref","probharmful","probharmful_ref"))
 summary(MA_ovarian_t01_wishart)
+
+#################### probuseful definition ###########################
+# extract posterior draws into a data frame
+draws <- as.data.frame(do.call(rbind, MA_NBCA125_weak))
+# define the best alternative per draw
+best_alt <- pmax(draws$NBnew_TA, 0)
+
+# at least as good as best alternative (tie-allowed)
+as.numeric(draws$NBnew >= best_alt) %>% mean()
+# strictly better than best alternative
+as.numeric(draws$NBnew > best_alt) %>% mean()
+# How often do ties actually happen?
+mean(draws$NBnew == best_alt)

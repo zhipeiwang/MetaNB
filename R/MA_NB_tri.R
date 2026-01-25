@@ -8,7 +8,7 @@ MA_NB_tri <- function(line_data,
                       inits = NULL,
                       n.chains = 2, n.adapt = 1000, burnin = 3000, iter = 1000, thin = 1,
                       diag_vars = c("pooledsens","pooledprev","pooledspec","pooledNB"),
-                      return_vars = c("NB", "probharmful"),
+                      return_vars = c("NB", "probuseful"),
                       # user may pass PARTIAL overrides here:
                       weak_priors = list(),
                       wishart_priors = list()
@@ -36,8 +36,8 @@ MA_NB_tri <- function(line_data,
   }
 
   # ---- expansion logic of returned parameters ----
-  # Only the *family names* "NB", "RU", "probharmful" trigger expansion.
-  # Atomic names like "pooledNB", "NBnew", "probharmful_ref" pass through unchanged.
+  # Only the *family names* "NB", "RU", "probuseful" trigger expansion.
+  # Atomic names like "pooledNB", "NBnew", "probuseful_ref" pass through unchanged.
   expand_target <- function(x, return_ref) {
 
     if (x == "NB") {
@@ -72,11 +72,11 @@ MA_NB_tri <- function(line_data,
       return(base)
     }
 
-    if (x == "probharmful") {
-      # probharmful is scalar, no "new" / "new_ref" in your model
-      base <- "probharmful"
+    if (x == "probuseful") {
+      # probuseful is scalar, no "new" / "new_ref" in your model
+      base <- "probuseful"
       if (return_ref) {
-        base <- c(base, "probharmful_ref")
+        base <- c(base, "probuseful_ref")
       }
       return(base)
     }
