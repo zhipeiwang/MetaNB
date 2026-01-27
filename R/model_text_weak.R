@@ -5,7 +5,7 @@ get_tri_model_weak <- function(include_EVPI = compute_EVPI, J = 1000) {
 # Weak realistic priors
 
 model{
-for (i in 1:N){
+for (i in 1:n_study){
 
 n_event[i] ~ dbin(prev[i],n[i])
 tp[i] ~ dbin(sens[i],n_event[i])

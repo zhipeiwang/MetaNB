@@ -8,8 +8,10 @@ library(rjags)
 library(coda)
 library(tidyverse)
 library(forestploter)
+library(rlang)
 
-MA_NBCA125_weak <- MA_NB_tri(data_ADNEXCA125, prior = "weak", t = 0.1, return_vars = c("NB", "RU", "probuseful", "NBnew", "NBnew_TA"))
+MA_NBCA125_weak <- MA_NB_tri(data = data_ADNEXCA125_full, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                             prior_type = "weak", t = 0.1, return_vars = c("NB", "RU", "probuseful", "NBnew", "NBnew_TA"))
 
 attributes(MA_NBCA125_weak)
 
@@ -17,7 +19,8 @@ summary(MA_NBCA125_weak)
 
 sum <- summarize_mcmc_outputs(
   MA_NBCA125_weak,
-  study_info = study_info_ADNEXCA125,
+  data = data_ADNEXCA125_full,
+  label_cols = c("Publication", "Country", "N", "Prevalence"),
   targets = c("NB", "RU", "probuseful"),
   targets_per_study = c("NB", "RU"),
   return_ref = TRUE
@@ -27,6 +30,8 @@ sum
 
 plot_forest_metric_forestploter(
   sum,
+  label_cols = c("Publication", "Country", "N", "Prevalence"),
+  prev_col = "Prevalence",
   metric = "NB",
 #  center = "Median",
   xlim = c(-0.1, 0.7),
@@ -43,7 +48,8 @@ plot_forest_metric_forestploter(
 )
 
 # Wishart prior
-MA_NBCA125_wishart <- MA_NB_tri(data_ADNEXCA125, t = 0.1, prior = "wishart")
+MA_NBCA125_wishart <- MA_NB_tri(data_ADNEXCA125_full, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                                t = 0.1, prior_type = "wishart")
 
 attributes(MA_NBCA125_wishart)
 
@@ -52,18 +58,21 @@ summary(MA_NBCA125_wishart)
 
 # ----------------- Stats Med ------------------------------
 # Fever example, weak realistic prior
-MA_fever_weak <- MA_NB_tri(data_fever, prior = "weak", t = 0.2,
+MA_fever_weak <- MA_NB_tri(data_fever, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                           prior_type = "weak", t = 0.2,
                                return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
                                                "NBnew_ref","probharmful","probharmful_ref"))
 summary(MA_fever_weak)
 
 # Fever example, wishart prior
-MA_fever_wishart <- MA_NB_tri(data_fever, prior = "wishart", t = 0.2,
+MA_fever_wishart <- MA_NB_tri(data_fever, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                              prior_type = "wishart", t = 0.2,
                                   return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
                                                   "NBnew_ref","probharmful","probharmful_ref"))
 summary(MA_fever_wishart)
 # Ovarian cancer example, weak realistic prior
-MA_ovarian_t005_weak <- MA_NB_tri(data_ovarian_t005, prior = "weak", t = 0.05, prev_ref = 0.15,
+MA_ovarian_t005_weak <- MA_NB_tri(data_ovarian_t005, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                                  prior_type = "weak", t = 0.05, prev_ref = 0.15,
                                       weak_priors = list(
                                         mu_etap=-1.04, tau_etap=1/(0.23^2),
                                         mu_lambdasens0=2.99, tau_lambdasens0=1/(0.36^2),
@@ -77,7 +86,8 @@ MA_ovarian_t005_weak <- MA_NB_tri(data_ovarian_t005, prior = "weak", t = 0.05, p
                                                       "NBnew_ref","probharmful","probharmful_ref"))
 summary(MA_ovarian_t005_weak)
 
-MA_ovarian_t01_weak <- MA_NB_tri(data_ovarian_t01, prior = "weak", t = 0.1, prev_ref = 0.15,
+MA_ovarian_t01_weak <- MA_NB_tri(data_ovarian_t01, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                                 prior_type = "weak", t = 0.1, prev_ref = 0.15,
                                      weak_priors = list(
                                        mu_etap=-1.04, tau_etap=1/(0.22^2),
                                        mu_lambdasens0=2.31, tau_lambdasens0=1/(0.31^2),
@@ -92,12 +102,14 @@ MA_ovarian_t01_weak <- MA_NB_tri(data_ovarian_t01, prior = "weak", t = 0.1, prev
 summary(MA_ovarian_t01_weak)
 
 # Ovarian cancer example, wishart prior
-MA_ovarian_t005_wishart <- MA_NB_tri(data_ovarian_t005, prior = "wishart", t = 0.05, prev_ref = 0.15,
+MA_ovarian_t005_wishart <- MA_NB_tri(data_ovarian_t005, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                                     prior_type = "wishart", t = 0.05, prev_ref = 0.15,
                                          return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
                                                          "NBnew_ref","probharmful","probharmful_ref"))
 summary(MA_ovarian_t005_wishart)
 
-MA_ovarian_t01_wishart <- MA_NB_tri(data_ovarian_t01, prior = "wishart", t = 0.1, prev_ref = 0.15,
+MA_ovarian_t01_wishart <- MA_NB_tri(data_ovarian_t01, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                                    prior_type = "wishart", t = 0.1, prev_ref = 0.15,
                                         return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
                                                         "NBnew_ref","probharmful","probharmful_ref"))
 summary(MA_ovarian_t01_wishart)

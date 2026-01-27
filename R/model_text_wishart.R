@@ -6,7 +6,7 @@ get_tri_model_wishart <- function() {
 
 model{
 # ---------- Likelihood ----------
-for (i in 1:N){
+for (i in 1:n_study){
 
 # n[i]<-n_event[i]+n_nonevent[i]
 n_event[i] ~ dbin(prev[i],n[i])

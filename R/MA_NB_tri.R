@@ -1,4 +1,5 @@
-MA_NB_tri <- function(line_data,
+MA_NB_tri <- function(data,
+                      tp, tn, n_event, n_nonevent,
                       prior_type = c("weak", "wishart"),
                       t = NULL,
                       prev_ref = 0.5,
@@ -20,11 +21,65 @@ MA_NB_tri <- function(line_data,
     stop("Argument `t` must be a single value in (0, 1) and must be supplied.")
   }
 
+  # ---- data must be a data frame ----
+  if (!is.data.frame(data)) {
+    stop("`data` must be a data frame.", call. = FALSE)
+  }
+
+  # resolve column names (unquoted or strings)
+  tp_col         <- resolve_col(rlang::enquo(tp),        data, "tp")
+  tn_col         <- resolve_col(rlang::enquo(tn),        data, "tn")
+  n_event_col    <- resolve_col(rlang::enquo(n_event),   data, "n_event")
+  n_nonevent_col <- resolve_col(rlang::enquo(n_nonevent),data, "n_nonevent")
+
+  # extract vectors
+  tp_vec         <- data[[tp_col]]
+  tn_vec         <- data[[tn_col]]
+  n_event_vec    <- data[[n_event_col]]
+  n_nonevent_vec <- data[[n_nonevent_col]]
+
+  n_study <- nrow(data)
+
+  # coerce & validate
+  tp_vec         <- as.numeric(tp_vec)
+  tn_vec         <- as.numeric(tn_vec)
+  n_event_vec    <- as.numeric(n_event_vec)
+  n_nonevent_vec <- as.numeric(n_nonevent_vec)
+
+  if (anyNA(tp_vec) || anyNA(tn_vec) || anyNA(n_event_vec) || anyNA(n_nonevent_vec)) {
+    stop("Missing values detected in tp/tn/n_event/n_nonevent. Please clean data first.", call. = FALSE)
+  }
+
+  # JAGS binomial needs integer counts
+  tp_vec         <- round(tp_vec)
+  tn_vec         <- round(tn_vec)
+  n_event_vec    <- round(n_event_vec)
+  n_nonevent_vec <- round(n_nonevent_vec)
+
+  if (any(tp_vec < 0) || any(tn_vec < 0) || any(n_event_vec < 0) || any(n_nonevent_vec < 0)) {
+    stop("Counts must be non-negative.", call. = FALSE)
+  }
+  if (any(tp_vec > n_event_vec)) {
+    stop("Some tp values exceed n_event.", call. = FALSE)
+  }
+  if (any(tn_vec > n_nonevent_vec)) {
+    stop("Some tn values exceed n_nonevent.", call. = FALSE)
+  }
+
+  n_vec <- n_event_vec + n_nonevent_vec
+
+  # build the JAGS list (same names the model expects)
+  line_data <- list(
+    n_study = n_study,
+    n = n_vec,
+    n_event = n_event_vec,
+    n_nonevent = n_nonevent_vec,
+    tp = tp_vec,
+    tn = tn_vec
+  )
+
+
   # ---- required data checks ----
-  missing <- setdiff(c("N","n","n_event","n_nonevent","tp","tn"), names(line_data))
-  if (length(missing)) stop("line_data is missing: ", paste(missing, collapse=", "))
-
-
   if (compute_EVPI) {
     if (!is.numeric(J) || length(J) != 1 || J <= 0)
       stop("When compute_EVPI = TRUE, J must be a positive integer")

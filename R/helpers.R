@@ -1,11 +1,62 @@
+# turn an argument into a column name
+resolve_col <- function(arg, data, arg_name) {
+  # arg is a quosure: enquo(tp)
+  if (rlang::quo_is_missing(arg)) {
+    stop("You must supply `", arg_name, "` when `data` is a data frame.", call. = FALSE)
+  }
+
+  expr <- rlang::get_expr(arg)
+
+  # Case 1: user passed a string, e.g. tp = "TP"
+  if (is.character(expr)) {
+    if (length(expr) != 1) {
+      stop("`", arg_name, "` must be a single column name.", call. = FALSE)
+    }
+    col <- expr
+
+    # Case 2: user passed an unquoted name, e.g. tp = TP
+  } else if (is.symbol(expr)) {
+    col <- rlang::as_name(expr)
+
+  } else {
+    stop("`", arg_name, "` must be a column name (unquoted) or a single string.",
+         call. = FALSE)
+  }
+
+  if (!col %in% names(data)) {
+    stop(
+      "Column `", col, "` (from `", arg_name, "`) not found in `data`.\n",
+      "Available columns: ", paste(names(data), collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  col
+}
+
+
+
 # summarizer for forest plot function
 summarize_mcmc_outputs <- function(
     samples,
-    study_info = NULL,
+    data = NULL,
+    label_cols = c("Publication", "Country", "N", "Prev"),
     targets = c("NB", "probuseful"),
     targets_per_study = c("NB"),
     return_ref = FALSE
 ) {
+  study_info <- NULL
+  if (!is.null(data)) {
+    if (!is.data.frame(data)) stop("`data` must be a data frame.", call. = FALSE)
+
+    missing_labels <- setdiff(label_cols, names(data))
+    if (length(missing_labels)) {
+      warning("Missing label_cols ignored: ", paste(missing_labels, collapse = ", "))
+    }
+    label_cols <- intersect(label_cols, names(data))
+    study_info <- data[, label_cols, drop = FALSE]
+  }
+
   ss <- summary(samples)
   stats  <- ss$statistics
   quants <- ss$quantiles
@@ -97,7 +148,7 @@ summarize_mcmc_outputs <- function(
 
         if (length(rows) > 0) {
           if (is.null(study_info)) {
-            stop("study_info required for per-study summaries of ", tar)
+            stop("data required for per-study summaries of ", tar)
           }
 
           idx <- as.integer(sub(paste0("^", spec$per_study_base, "\\[(\\d+)\\]$"),

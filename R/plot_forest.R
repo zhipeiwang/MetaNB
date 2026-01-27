@@ -1,5 +1,9 @@
 plot_forest_metric_forestploter <- function(
     sum,
+    label_cols = c("Publication", "Country", "N", "Prev"),
+    study_label_col = NULL,
+    prev_col = NULL,
+    n_col = NULL,
     metric = c("NB", "RU"),
     center = c("Median", "Mean"),
     xlim = NULL,
@@ -39,8 +43,21 @@ plot_forest_metric_forestploter <- function(
   xlab <- if (metric == "NB") "Net Benefit" else "Relative Utility"
   col_label <- if (metric == "NB") "NB (95% CrI)" else "RU (95% CrI)"
 
-  # ---------- CHECK IF COUNTRY COLUMN IS PRESENT ----------
-  has_country <- "Country" %in% names(sum_m$per_study)
+  # keep only label columns that exist
+  label_cols <- intersect(label_cols, names(sum_m$per_study))
+  if (length(label_cols) == 0) stop("None of `label_cols` exist in per-study results.", call. = FALSE)
+
+  # which column should receive "Pooled estimate", etc.
+  if (is.null(study_label_col)) {
+    study_label_col <- label_cols[1]
+  } else {
+    if (!study_label_col %in% names(sum_m$per_study)) {
+      stop("`study_label_col` = '", study_label_col, "' not found in per-study results.", call. = FALSE)
+    }
+    # ensure it's included in the table
+    if (!study_label_col %in% label_cols) label_cols <- c(study_label_col, label_cols)
+  }
+
 
   # ---------- 1. Per-study table (sorted by mean) ----------
   per <- sum_m$per_study %>%
@@ -48,65 +65,65 @@ plot_forest_metric_forestploter <- function(
 
   df <- per %>%
     dplyr::mutate(
-      Publication = Publication,
-      Country     = if (has_country) Country else NULL,
-      N           = as.character(N),
-      Prev        = scales::percent(Prev, accuracy = 1),
-      ` `         = strrep(" ", plot_col_width),
-      value_ci    = sprintf("%5.2f  [%.2f; %.2f]", .data[[center]], Low, High)
-    )
+      ` `      = strrep(" ", plot_col_width),
+      value_ci = sprintf("%5.2f  [%.2f; %.2f]", .data[[center]], Low, High)
+    ) %>%
+    dplyr::select(dplyr::all_of(label_cols), ` `, value_ci)
 
-  df <- if (has_country) {
-    df %>% dplyr::select(Publication, Country, N, Prev, ` `, value_ci)
-  } else {
-    df %>% dplyr::select(Publication, N, Prev, ` `, value_ci)
+  # pretty formatting (only if user tells us which columns these are)
+  if (!is.null(prev_col) && prev_col %in% names(df)) {
+    df <- df %>% dplyr::mutate(!!prev_col := scales::percent(as.numeric(.data[[prev_col]]), accuracy = 1))
   }
+
+  if (!is.null(n_col) && n_col %in% names(df)) {
+    df <- df %>% dplyr::mutate(!!n_col := format(as.numeric(.data[[n_col]]),
+                                                 big.mark = ",", scientific = FALSE, trim = TRUE))
+  }
+
+  # IMPORTANT: make label columns character so bind_rows works with blank rows
+  df <- df %>%
+    dplyr::mutate(dplyr::across(dplyr::all_of(label_cols), as.character))
+
 
   names(df)[ncol(df)] <- col_label
 
-  # ---------- 2. Pooled row (model strategy only) ----------
-  pooled <- sum_m$pooled$model
+  # build a "blank row" template
+  make_row <- function(title, value_ci) {
+    row <- as.list(rep("", length(label_cols)))
+    names(row) <- label_cols
+    row[[study_label_col]] <- title
 
-  pooled_row <- tibble::tibble(
-    Publication = "Pooled estimate",
-    Country     = if (has_country) "" else NULL,
-    N = "", Prev = "",
-    ` ` = strrep(" ", plot_col_width),
-    value_ci = sprintf("%5.2f  [%.2f; %.2f]",
-                       pooled[center], pooled["Low"], pooled["High"])
-  )
+    row <- tibble::as_tibble(row) %>%
+      dplyr::mutate(
+        ` ` = strrep(" ", plot_col_width),
+        value_ci = value_ci
+      )
 
-  if (!has_country) pooled_row$Country <- NULL
-  names(pooled_row)[ncol(pooled_row)] <- col_label
-
-  # ---------- 3. Prediction interval row ----------
-  pred <- sum_m$predictive$model
-
-  pred_row <- tibble::tibble(
-    Publication = "Prediction interval",
-    Country     = if (has_country) "" else NULL,
-    N = "", Prev = "",
-    ` ` = strrep(" ", plot_col_width),
-    value_ci = sprintf("[%.2f; %.2f]", pred["Low"], pred["High"])
-  )
-
-  if (!has_country) pred_row$Country <- NULL
-  names(pred_row)[ncol(pred_row)] <- col_label
-
-  # ---------- 3B. P(useful) row (text only) ----------
-  pu_row <- NULL
-  if (show_pu) {
-    pu_row <- tibble::tibble(
-      Publication = "P(useful)",
-      Country     = if (has_country) "" else NULL,
-      N = "", Prev = "",
-      ` ` = strrep(" ", plot_col_width),
-      value_ci = sprintf("%5.2f", prob_useful)
-    )
-    if (!has_country) pu_row$Country <- NULL
-    names(pu_row)[ncol(pu_row)] <- col_label
+    names(row)[ncol(row)] <- col_label
+    row
   }
 
+  # Pooled and predictive objects
+  pooled <- sum_m$pooled$model
+  pred   <- sum_m$predictive$model
+
+  if (is.null(pooled)) stop("No pooled results found for metric ", metric, call. = FALSE)
+  if (is.null(pred))   stop("No predictive results found for metric ", metric, call. = FALSE)
+
+  # ---------- 2. Pooled row (model strategy only) ----------
+  pooled_row <- make_row(
+    "Pooled estimate",
+    sprintf("%5.2f  [%.2f; %.2f]", pooled[center], pooled["Low"], pooled["High"])
+  )
+
+  # ---------- 3. Prediction interval row ----------
+  pred_row <- make_row(
+    "Prediction interval",
+    sprintf("[%.2f; %.2f]", pred["Low"], pred["High"])
+  )
+
+  # ---------- 3B. P(useful) row (text only) ----------
+  pu_row <- if (show_pu) make_row("P(useful)", sprintf("%.2f", prob_useful)) else NULL
 
 
   # ---------- 4. Combine table ----------
@@ -156,7 +173,7 @@ plot_forest_metric_forestploter <- function(
   # ---------- 6. Theme ----------
   tm <- forestploter::forest_theme(
     base_size    = 10,
-    refline_gp   = grid::gpar(lty = "solid"),
+    # refline_gp   = grid::gpar(lty = "solid"),
     summary_fill = "grey20",
     summary_col  = "grey20",
     point_size   = 2
@@ -172,8 +189,8 @@ plot_forest_metric_forestploter <- function(
     ci_column  = ci_col,
     xlab       = xlab,
     xlim       = xlim,
-    ref_line   = 0,
-    vert_line = pooled[center],
+    ref_line   = pooled[center],
+    # vert_line = pooled[center],
     theme      = tm
   )
 
