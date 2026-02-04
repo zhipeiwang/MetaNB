@@ -5,10 +5,11 @@ MA_NB_tri <- function(data,
                       prev_ref = 0.5,
                       return_ref = FALSE,
                       compute_EVPI = FALSE,
+                      return_fit = TRUE,
                       J = 1000,
                       inits = NULL,
                       n.chains = 2, n.adapt = 1000, burnin = 3000, iter = 1000, thin = 1,
-                      diag_vars = c("pooledsens","pooledprev","pooledspec","pooledNB"),
+                      diag_vars = c("pooledsens","pooledprev","pooledspec","pooledNB", "pooledNB_TA", "pooledRU"),
                       return_vars = c("NB", "probuseful"),
                       # user may pass PARTIAL overrides here:
                       weak_priors = list(),
@@ -128,11 +129,29 @@ MA_NB_tri <- function(data,
     }
 
     if (x == "probuseful") {
-      # probuseful is scalar, no "new" / "new_ref" in your model
+      # probuseful is scalar
       base <- "probuseful"
       if (return_ref) {
         base <- c(base, "probuseful_ref")
       }
+      return(base)
+    }
+
+    if (x == "sens") {
+      base <- c(
+        "sens",       # per-study sens[i]
+        "pooledsens", # pooled
+        "sensnew"     # predictive (new setting)
+      )
+      return(base)
+    }
+
+    if (x == "spec") {
+      base <- c(
+        "spec",       # per-study spec[i]
+        "pooledspec", # pooled
+        "specnew"     # predictive (new setting)
+      )
       return(base)
     }
 
@@ -198,7 +217,7 @@ MA_NB_tri <- function(data,
     if (!all(dim(priors_used$R)   == c(3,3))) stop("wishart_priors$R must be 3x3")
 
     jags_data  <- utils::modifyList(jags_data, priors_used)
-    model_string <- get_tri_model_wishart()
+    model_string <- get_tri_model_wishart(include_EVPI = compute_EVPI, J = J)
   }
 
   # ---- compile, adapt, burn-in ----
@@ -222,5 +241,34 @@ MA_NB_tri <- function(data,
   attr(samples,"returned") <- return_vars
   attr(samples,"saved_per_chain") <- iter/thin
   attr(samples,"total_saved") <- n.chains * (iter/thin)
-  samples
+
+  # ---- return ----
+  # format priors for easy printing
+  priors_used_df <- data.frame(
+    prior = names(priors_used),
+    value = vapply(priors_used, function(x) {
+      if (is.numeric(x) && length(x) == 1) format(x, digits = 6)
+      else if (is.numeric(x)) paste(x, collapse = ", ")
+      else if (is.matrix(x)) paste0("matrix(", nrow(x), "x", ncol(x), ")")
+      else as.character(x)
+    }, character(1)),
+    stringsAsFactors = FALSE
+  )
+  priors_used_tibble <- tibble::as_tibble(priors_used_df)
+
+
+  # return only samples if requested
+  if (!return_fit) {
+    return(samples)
+  }
+
+  return(list(
+    samples = samples,
+    priors_used_tibble = priors_used_tibble,
+    t = t,
+    prev_ref = prev_ref,
+    prior_type = prior_type,
+    returned = return_vars
+  ))
+
 }

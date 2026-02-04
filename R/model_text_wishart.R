@@ -1,5 +1,5 @@
 # return JAGS model text for Wishart prior
-get_tri_model_wishart <- function() {
+get_tri_model_wishart <- function(include_EVPI = compute_EVPI, J = 1000) {
 
   model_string <- "
 # Inverse Wishart prior for the variance-covariance matrix
@@ -80,110 +80,29 @@ probuseful_ref<-equals(max(max(NBnew_ref,NBnew_TA_ref),0), NBnew_ref)
 
 RUnew<-(NBnew - max(NBnew_TA, 0) ) / (prevnew - max(NBnew_TA, 0))
 RUnew_ref<-(NBnew_ref - max(NBnew_TA_ref, 0) ) / (prev_ref - max(NBnew_TA_ref, 0))
-}
+
   "
+if (include_EVPI) {
+  model_string <- paste0(model_string, "
+# --- EVPI population-level block ---
+for (j in 1:J) {
+  logitsnew2[j,1:3] ~ dmnorm(mu[1:3], T[1:3,1:3])
+
+  prevnew2[j] <- exp(logitsnew2[j,1]) / (1 + exp(logitsnew2[j,1]))
+  sensnew2[j] <- exp(logitsnew2[j,2]) / (1 + exp(logitsnew2[j,2]))
+  specnew2[j] <- exp(logitsnew2[j,3]) / (1 + exp(logitsnew2[j,3]))
+
+  NBnew2[j]    <- sensnew2[j] * prevnew2[j]
+                  - (1 - specnew2[j]) * (1 - prevnew2[j]) * t / (1 - t)
+  NBnew_TA2[j] <- prevnew2[j]
+                  - (1 - prevnew2[j]) * t / (1 - t)
+}
+ENBnew    <- mean(NBnew2[])
+ENBnew_TA <- mean(NBnew_TA2[])
+  ")
+}
+
+model_string <- paste0(model_string, "}")
 
 return(model_string)
-}
-
-# a generalized summarizer for MCMC outputs
-summarize_mcmc_outputs <- function(
-    samples,
-    study_info = NULL,
-    targets = c("NB", "RU"),
-    targets_per_study = c("NB", "RU")   # only these have per-study versions
-){
-  ss <- summary(samples)
-  stats  <- ss$statistics
-  quants <- ss$quantiles
-
-  out <- list()
-
-  for (tar in targets) {
-
-    ## -------------------------------
-    ## 1. Per-study extraction (NB[i], RU[i])
-    ## -------------------------------
-    per_study <- NULL
-
-    if (tar %in% targets_per_study) {
-
-      # find rows like "NB[1]", "NB[2]", ...
-      pat <- paste0("^", tar, "\\[\\d+\\]$")
-      rows <- grep(pat, rownames(stats), value = TRUE)
-
-      if (length(rows) > 0) {
-        idx <- as.integer(sub(paste0("^", tar, "\\[(\\d+)\\]$"), "\\1", rows))
-        ord <- order(idx)
-
-        if (is.null(study_info)) {
-          stop("study_info is required for per-study extraction of ", tar)
-        }
-
-        per_study <- study_info %>%
-          mutate(.idx = row_number()) %>%
-          arrange(.idx) %>%
-          mutate(
-            mean  = stats[rows, "Mean"][ord],
-            low   = quants[rows, "2.5%"][ord],
-            high  = quants[rows, "97.5%"][ord]
-          ) %>%
-          select(-.idx)
-      }
-    }
-
-    ## -------------------------------
-    ## 2. Pooled version
-    ## -------------------------------
-    pooled_row_name <- paste0("pooled", tar)         # e.g., "NB", "RU"
-    pooled <- NULL
-
-    if (pooled_row_name %in% rownames(stats)) {
-      pooled <- c(
-        mean = stats[pooled_row_name, "Mean"],
-        low  = quants[pooled_row_name, "2.5%"],
-        high = quants[pooled_row_name, "97.5%"]
-      )
-    }
-
-    ## -------------------------------
-    ## 3. Predictive version (NBnew, RUnew, NBnew_ref, etc.)
-    ## -------------------------------
-    pred_name <- paste0(tar, "new")  # e.g., NB -> NBnew, RU -> RUnew
-    pred_row  <- NULL
-
-    if (pred_name %in% rownames(stats)) {
-      pred_row <- c(
-        mean = stats[pred_name, "Mean"],
-        low  = quants[pred_name, "2.5%"],
-        high = quants[pred_name, "97.5%"]
-      )
-    }
-
-    ## -------------------------------
-    ## 4. Reference-prevalence predictive (NBnew_ref, RUnew_ref)
-    ## -------------------------------
-    pred_ref_name <- paste0(tar, "new_ref")
-    pred_ref <- NULL
-
-    if (pred_ref_name %in% rownames(stats)) {
-      pred_ref <- c(
-        mean = stats[pred_ref_name, "Mean"],
-        low  = quants[pred_ref_name, "2.5%"],
-        high = quants[pred_ref_name, "97.5%"]
-      )
-    }
-
-    ## -------------------------------
-    ## Store in output
-    ## -------------------------------
-    out[[tar]] <- list(
-      per_study = per_study,
-      pooled    = pooled,
-      pred      = pred_row,
-      pred_ref  = pred_ref
-    )
-  }
-
-  return(out)
 }

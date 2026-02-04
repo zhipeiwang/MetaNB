@@ -1,3 +1,4 @@
+# for the MA_NB_tri() function to accept df instead of a list of lists
 # turn an argument into a column name
 resolve_col <- function(arg, data, arg_name) {
   # arg is a quosure: enquo(tp)
@@ -34,10 +35,36 @@ resolve_col <- function(arg, data, arg_name) {
   col
 }
 
+# recursively drop NULLs from a list
+drop_nulls_recursive <- function(x) {
+  # Keep data frames intact
+  if (is.data.frame(x)) return(x)
+
+  # Keep atomic vectors (including named numeric vectors) intact
+  if (!is.list(x)) return(x)
+
+  # Recurse only through true lists
+  x <- lapply(x, drop_nulls_recursive)
+
+  # Drop NULL elements from this list level
+  x <- x[!vapply(x, is.null, logical(1))]
+
+  # Optional: drop empty lists (but NOT data frames; handled above)
+  x <- x[!vapply(x, function(z) is.list(z) && length(z) == 0, logical(1))]
+
+  x
+}
+
+# extract mcmc.list from fit object or pass through if already mcmc.list
+get_samples <- function(x) {
+  if (inherits(x, "mcmc.list")) return(x)
+  if (is.list(x) && !is.null(x$samples) && inherits(x$samples, "mcmc.list")) return(x$samples)
+  stop("Expected an mcmc.list or a fit object with $samples (mcmc.list).", call. = FALSE)
+}
 
 
-# summarizer for forest plot function
-summarize_mcmc_outputs <- function(
+####################-------------------summarizer for forest plot function----------------------######################
+summarize_for_forestplot <- function(
     samples,
     data = NULL,
     label_cols = c("Publication", "Country", "N", "Prev"),
@@ -57,6 +84,7 @@ summarize_mcmc_outputs <- function(
     study_info <- data[, label_cols, drop = FALSE]
   }
 
+  samples <- get_samples(samples)
   ss <- summary(samples)
   stats  <- ss$statistics
   quants <- ss$quantiles
@@ -125,7 +153,23 @@ summarize_mcmc_outputs <- function(
       predictive = NULL,
       pooled_ref = list(model = "probuseful_ref"),
       pred_ref = NULL
+    ),
+    sens = list(
+      per_study_base = "sens",
+      pooled = list(model = "pooledsens"),
+      predictive = list(model = "sensnew"),
+      pooled_ref = NULL,
+      pred_ref = NULL
+    ),
+
+    spec = list(
+      per_study_base = "spec",
+      pooled = list(model = "pooledspec"),
+      predictive = list(model = "specnew"),
+      pooled_ref = NULL,
+      pred_ref = NULL
     )
+
   )
 
   out <- list()
@@ -137,13 +181,13 @@ summarize_mcmc_outputs <- function(
     # -------------------------------
     if (tar %in% names(family_spec)) {
 
-      spec <- family_spec[[tar]]
+      metric_def <- family_spec[[tar]]
 
       # ---- per-study ----
       per_study <- NULL
-      if (!is.null(spec$per_study_base) && tar %in% targets_per_study) {
+      if (!is.null(metric_def$per_study_base) && tar %in% targets_per_study) {
 
-        pat  <- paste0("^", spec$per_study_base, "\\[\\d+\\]$")
+        pat  <- paste0("^", metric_def$per_study_base, "\\[\\d+\\]$")
         rows <- grep(pat, rownames(stats), value = TRUE)
 
         if (length(rows) > 0) {
@@ -151,9 +195,50 @@ summarize_mcmc_outputs <- function(
             stop("data required for per-study summaries of ", tar)
           }
 
-          idx <- as.integer(sub(paste0("^", spec$per_study_base, "\\[(\\d+)\\]$"),
+          idx <- as.integer(sub(paste0("^", metric_def$per_study_base, "\\[(\\d+)\\]$"),
                                 "\\1", rows))
           ord <- order(idx)
+
+          n_data <- nrow(study_info)
+
+          # Basic sanity
+          if (anyNA(idx)) {
+            stop("Could not parse study indices from MCMC row names for ", tar, ".", call. = FALSE)
+          }
+          if (any(idx < 1) || any(idx > n_data)) {
+            stop(
+              "Per-study indices for ", tar, " are out of range.\n",
+              "Found indices: ", paste(sort(unique(idx)), collapse = ", "), "\n",
+              "But data has ", n_data, " rows.",
+              call. = FALSE
+            )
+          }
+
+          # Strong alignment check to prevent mislabeling
+          if (length(idx) != n_data || !setequal(idx, seq_len(n_data))) {
+            stop(
+              "Mismatch between per-study draws and `data` rows for ", tar, ".\n",
+              "MCMC has indices: ", paste(sort(unique(idx)), collapse = ", "), "\n",
+              "But data expects: ", paste(seq_len(n_data), collapse = ", "), "\n",
+              "This would misalign study labels with estimates, so I am stopping.",
+              call. = FALSE
+            )
+          }
+
+          # add observed rates for sens / spec in study_info
+          if (tar %in% c("sens", "spec")) {
+
+            # compute observed rates if the needed columns exist
+            has_needed <- all(c("tp", "tn", "n_event", "n_nonevent") %in% names(data))
+
+            if (has_needed) {
+              if (tar == "sens") {
+                study_info$Observed <- with(data, tp / n_event)
+              } else {
+                study_info$Observed <- with(data, tn / n_nonevent)
+              }
+            }
+          }
 
           per_study <- study_info %>%
             dplyr::mutate(.idx = dplyr::row_number()) %>%
@@ -170,9 +255,9 @@ summarize_mcmc_outputs <- function(
 
       # ---- pooled (CrI) ----
       pooled <- list()
-      if (!is.null(spec$pooled)) {
-        for (k in names(spec$pooled)) {
-          pooled[[k]] <- get_cri(spec$pooled[[k]])
+      if (!is.null(metric_def$pooled)) {
+        for (k in names(metric_def$pooled)) {
+          pooled[[k]] <- get_cri(metric_def$pooled[[k]])
         }
         pooled <- pooled[!sapply(pooled, is.null)]
         if (length(pooled) == 0) pooled <- NULL
@@ -180,9 +265,9 @@ summarize_mcmc_outputs <- function(
 
       # ---- predictive (PI) ----
       predictive <- list()
-      if (!is.null(spec$predictive)) {
-        for (k in names(spec$predictive)) {
-          predictive[[k]] <- get_pi(spec$predictive[[k]])
+      if (!is.null(metric_def$predictive)) {
+        for (k in names(metric_def$predictive)) {
+          predictive[[k]] <- get_pi(metric_def$predictive[[k]])
         }
         predictive <- predictive[!sapply(predictive, is.null)]
         if (length(predictive) == 0) predictive <- NULL
@@ -190,10 +275,10 @@ summarize_mcmc_outputs <- function(
 
       # ---- pooled_ref (CrI) ----
       pooled_ref <- NULL
-      if (return_ref && !is.null(spec$pooled_ref)) {
+      if (return_ref && !is.null(metric_def$pooled_ref)) {
         pooled_ref <- list()
-        for (k in names(spec$pooled_ref)) {
-          pooled_ref[[k]] <- get_cri(spec$pooled_ref[[k]])
+        for (k in names(metric_def$pooled_ref)) {
+          pooled_ref[[k]] <- get_cri(metric_def$pooled_ref[[k]])
         }
         pooled_ref <- pooled_ref[!sapply(pooled_ref, is.null)]
         if (length(pooled_ref) == 0) pooled_ref <- NULL
@@ -201,10 +286,10 @@ summarize_mcmc_outputs <- function(
 
       # ---- pred_ref (PI or mean-only) ----
       pred_ref <- NULL
-      if (return_ref && !is.null(spec$pred_ref)) {
+      if (return_ref && !is.null(metric_def$pred_ref)) {
         pred_ref <- list()
-        for (k in names(spec$pred_ref)) {
-          pred_ref[[k]] <- get_pi(spec$pred_ref[[k]])
+        for (k in names(metric_def$pred_ref)) {
+          pred_ref[[k]] <- get_pi(metric_def$pred_ref[[k]])
         }
         pred_ref <- pred_ref[!sapply(pred_ref, is.null)]
         if (length(pred_ref) == 0) pred_ref <- NULL
@@ -246,5 +331,109 @@ summarize_mcmc_outputs <- function(
     }
   }
 
+  # ---- drop NULLs recursively ----
+  drop_nulls_recursive(out)
+
+
+}
+
+
+####################------------------- user-facing summarizer ----------------------######################
+summarize_for_users <- function(
+    samples,
+    data = NULL,
+    label_cols = c("Publication", "Country", "N", "Prev"),
+    metrics = c("NB", "RU", "probuseful"),
+    per_study_metrics = c("NB", "RU"),
+    return_ref = FALSE,
+    include_per_study = TRUE
+) {
+  core <- summarize_for_forestplot(
+    samples = get_samples(samples),
+    data = data,
+    label_cols = label_cols,
+    targets = metrics,
+    targets_per_study = if (include_per_study) per_study_metrics else character(0),
+    return_ref = return_ref
+  )
+
+  out <- list()
+
+  # --- NB / RU: keep structure; named vectors (no 1-row dfs) ---
+  for (m in intersect(c("NB","RU"), names(core))) {
+    obj <- core[[m]]
+
+    out[[m]] <- drop_nulls_recursive(list(
+      per_study  = if (include_per_study) obj$per_study else NULL,
+      pooled     = obj$pooled,        # named vectors inside
+      predictive = obj$predictive,    # named vectors inside
+      pooled_ref = if (return_ref) obj$pooled_ref else NULL,
+      pred_ref   = if (return_ref) obj$pred_ref else NULL
+    ))
+  }
+
+  # --- probuseful: scalar value, not pooled/model ---
+  if ("probuseful" %in% names(core)) {
+    pu <- core$probuseful
+
+    value <- NULL
+    if (!is.null(pu$pooled$model) && "Mean" %in% names(pu$pooled$model)) {
+      value <- unname(pu$pooled$model["Mean"])
+    }
+
+    value_ref <- NULL
+    if (return_ref && !is.null(pu$pooled_ref$model) && "Mean" %in% names(pu$pooled_ref$model)) {
+      value_ref <- unname(pu$pooled_ref$model["Mean"])
+    }
+
+    out$probuseful <- drop_nulls_recursive(list(
+      value = value,
+      value_ref = value_ref
+    ))
+  }
+
+  # atomic scalars (if you allow them in metrics)
+  other <- setdiff(metrics, c("NB","RU","probuseful"))
+  for (nm in intersect(other, names(core))) {
+    out[[nm]] <- core[[nm]]
+  }
+
+  drop_nulls_recursive(out)
+}
+
+
+# convert mcmc.list to tibble of draws, a helper for compute_voi_metrics()
+mcmc_list_to_draws <- function(samples) {
+  if (!inherits(samples, "mcmc.list")) {
+    stop("`samples` must be a coda::mcmc.list.", call. = FALSE)
+  }
+  # row-bind all chains; keep parameter names as columns
+  mats <- lapply(samples, as.matrix)
+  draws <- do.call(rbind, mats)
+
+  # safer as tibble/data.frame; preserve numeric columns
+  draws <- as.data.frame(draws, check.names = FALSE)
+  tibble::as_tibble(draws)
+}
+
+# compute sigma values for each pair of columns in df, MCMC diagnostic helper
+calc_sigma <- function(df) {
+  df <- as.data.frame(df)
+  n <- nrow(df)
+  m <- ncol(df)
+  if (n < 2 || m < 2) return(numeric(0))
+
+  out <- numeric(m * (m - 1) / 2)
+  idx <- 1
+  for (i in 1:(m - 1)) {
+    for (j in (i + 1):m) {
+      d <- df[[i]] - df[[j]]
+      se <- stats::sd(d) / sqrt(n)
+      out[idx] <- abs(mean(d)) / se
+      idx <- idx + 1
+    }
+  }
   out
 }
+
+

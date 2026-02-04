@@ -11,18 +11,29 @@ library(forestploter)
 library(rlang)
 
 MA_NBCA125_weak <- MA_NB_tri(data = data_ADNEXCA125_full, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
-                             prior_type = "weak", t = 0.1, return_vars = c("NB", "RU", "probuseful", "NBnew", "NBnew_TA"))
+                             prior_type = "weak", t = 0.1,
+                             return_vars = c("NB", "RU", "probuseful", "NBnew", "NBnew_TA", "sens", "spec"),
+                             return_ref = TRUE, return_fit = TRUE)
 
-attributes(MA_NBCA125_weak)
 
-summary(MA_NBCA125_weak)
+summary(MA_NBCA125_weak$samples)
 
-sum <- summarize_mcmc_outputs(
+sum_user <- summarize_for_users(
   MA_NBCA125_weak,
   data = data_ADNEXCA125_full,
-  label_cols = c("Publication", "Country", "N", "Prevalence"),
-  targets = c("NB", "RU", "probuseful"),
-  targets_per_study = c("NB", "RU"),
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "RU", "probuseful", "sens", "spec"),
+  per_study_metrics = c("NB", "RU", "sens", "spec"),
+  return_ref = FALSE,
+  include_per_study = FALSE)
+sum_user
+
+sum <- summarize_for_forestplot(
+  MA_NBCA125_weak,
+  data = data_ADNEXCA125_full,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  targets = c("NB", "RU", "probuseful", "sens", "spec"),
+  targets_per_study = c("NB", "RU", "sens", "spec"),
   return_ref = TRUE
 )
 sum
@@ -41,10 +52,37 @@ plot_forest_metric_forestploter(
 
 plot_forest_metric_forestploter(
   sum,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  prev_col = "Prev",
   metric = "RU",
   xlim = c(-0.1, 1),
   file_png = "forest_ru.png",
   file_pdf = "forest_ru.pdf"
+)
+
+plot_forest_metric_forestploter(
+  sum,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  prev_col = "Prev",
+  metric = "sens",
+  # center = "Median",
+  xlim = c(0.7, 1),
+  xticks = seq(0.7, 1, by = 0.05),
+  file_png = "forest_sens.png",
+  file_pdf = "forest_sens.pdf"
+)
+
+
+plot_forest_metric_forestploter(
+  sum,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  prev_col = "Prev",
+  metric = "spec",
+  # center = "Median",
+  xlim = c(0.3, 1),
+  xticks = seq(0.3, 1, by = 0.1),
+  file_png = "forest_spec.png",
+  file_pdf = "forest_spec.pdf"
 )
 
 # Wishart prior
@@ -61,14 +99,14 @@ summary(MA_NBCA125_wishart)
 MA_fever_weak <- MA_NB_tri(data_fever, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
                            prior_type = "weak", t = 0.2,
                                return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
-                                               "NBnew_ref","probharmful","probharmful_ref"))
+                                               "NBnew_ref","probuseful","probuseful_ref"))
 summary(MA_fever_weak)
 
 # Fever example, wishart prior
 MA_fever_wishart <- MA_NB_tri(data_fever, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
                               prior_type = "wishart", t = 0.2,
                                   return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
-                                                  "NBnew_ref","probharmful","probharmful_ref"))
+                                                  "NBnew_ref","probuseful","probuseful_ref"))
 summary(MA_fever_wishart)
 # Ovarian cancer example, weak realistic prior
 MA_ovarian_t005_weak <- MA_NB_tri(data_ovarian_t005, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
@@ -83,7 +121,7 @@ MA_ovarian_t005_weak <- MA_NB_tri(data_ovarian_t005, tp = tp, tn = tn, n_event =
                                         tau_varprev=0.25, tau_varsens=0.25, tau_varspec=0.25 # not changed, still half-normal
                                       ), # table A1 in stats med paper
                                       return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
-                                                      "NBnew_ref","probharmful","probharmful_ref"))
+                                                      "NBnew_ref","probuseful","probuseful_ref"))
 summary(MA_ovarian_t005_weak)
 
 MA_ovarian_t01_weak <- MA_NB_tri(data_ovarian_t01, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
@@ -98,31 +136,55 @@ MA_ovarian_t01_weak <- MA_NB_tri(data_ovarian_t01, tp = tp, tn = tn, n_event = n
                                        tau_varprev=0.25, tau_varsens=0.25, tau_varspec=0.25 # not changed, still half-normal
                                      ), # table A1 in stats med paper
                                      return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
-                                                     "NBnew_ref","probharmful","probharmful_ref"))
+                                                     "NBnew_ref","probuseful","probuseful_ref"))
 summary(MA_ovarian_t01_weak)
 
 # Ovarian cancer example, wishart prior
 MA_ovarian_t005_wishart <- MA_NB_tri(data_ovarian_t005, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
                                      prior_type = "wishart", t = 0.05, prev_ref = 0.15,
                                          return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
-                                                         "NBnew_ref","probharmful","probharmful_ref"))
+                                                         "NBnew_ref","probuseful","probuseful_ref"))
 summary(MA_ovarian_t005_wishart)
 
 MA_ovarian_t01_wishart <- MA_NB_tri(data_ovarian_t01, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
                                     prior_type = "wishart", t = 0.1, prev_ref = 0.15,
                                         return_vars = c("pooledsens","pooledspec","pooledNB","pooledNB_ref","pooledNB_TA","pooledNB_TA_ref","NBnew",
-                                                        "NBnew_ref","probharmful","probharmful_ref"))
+                                                        "NBnew_ref","probuseful","probuseful_ref"))
 summary(MA_ovarian_t01_wishart)
 
-#################### probuseful definition ###########################
-# extract posterior draws into a data frame
-draws <- as.data.frame(do.call(rbind, MA_NBCA125_weak))
-# define the best alternative per draw
-best_alt <- pmax(draws$NBnew_TA, 0)
 
-# at least as good as best alternative (tie-allowed)
-as.numeric(draws$NBnew >= best_alt) %>% mean()
-# strictly better than best alternative
-as.numeric(draws$NBnew > best_alt) %>% mean()
-# How often do ties actually happen?
-mean(draws$NBnew == best_alt)
+##################################  VOI  #####################################
+MA_NBCA125_weak_forVOI <- MA_NB_tri(data = data_ADNEXCA125_full, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                             prior_type = "weak", t = 0.1,
+                             return_vars = c("NBnew", "NBnew_TA", "ENBnew", "ENBnew_TA", "prevnew", "pooledNB", "pooledNB_TA", "probuseful"),
+                             compute_EVPI = TRUE)
+
+res <- compute_voi_metrics(MA_NBCA125_weak_forVOI)
+res$metrics
+res$diagnostics
+
+fit_voi <- sample_voi_draws(
+  data = data_ADNEXCA125_full,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  prior_type = "weak",
+  t = 0.1,
+  J = 1000,
+  burnin = 3000,
+  sample_by = 2000,
+  auto_resample = TRUE,
+  max_rounds = 20
+)
+
+fit_voi$metrics
+fit_voi$diagnostics
+
+voi_res <- MA_NB_tri_voi(
+  data_ADNEXCA125_full,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  prior_type = "weak",
+  t = 0.1,
+  auto_resample = TRUE
+)
+
+voi_res$metrics
+voi_res$diagnostics

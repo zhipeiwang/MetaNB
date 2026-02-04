@@ -4,24 +4,27 @@ plot_forest_metric_forestploter <- function(
     study_label_col = NULL,
     prev_col = NULL,
     n_col = NULL,
-    metric = c("NB", "RU"),
+    metric = c("NB", "RU", "sens", "spec"),
     center = c("Median", "Mean"),
     xlim = NULL,
+    xticks = NULL,
     plot_col_width = 50,
     file_png = NULL,
     file_pdf = NULL
 ) {
+  xlim_user <- !is.null(xlim)
+
   metric <- match.arg(metric)
   sum_m  <- sum[[metric]]
-
-  if (is.null(sum_m$per_study)) {
-    stop("No per-study results found for metric ", metric,
-         ". Did you return RU[i] in MA_NB_tri() and summarize it?")
-  }
 
   if (is.null(sum_m)) {
     stop("Metric ", metric, " not found in summary object.")
   }
+  if (is.null(sum_m$per_study)) {
+    stop("No per-study results found for metric ", metric,
+         ". Did you return it in MA_NB_tri() and summarize it?")
+  }
+
 
   center_missing <- missing(center)
   center <- match.arg(center)
@@ -40,8 +43,20 @@ plot_forest_metric_forestploter <- function(
   show_pu <- (metric == "NB") && !is.null(prob_useful)
 
   # ---------- LABELS ----------
-  xlab <- if (metric == "NB") "Net Benefit" else "Relative Utility"
-  col_label <- if (metric == "NB") "NB (95% CrI)" else "RU (95% CrI)"
+  label_map <- list(
+    NB   = list(xlab = "Net Benefit",        col = "NB (95% CrI)"),
+    RU   = list(xlab = "Relative Utility",   col = "RU (95% CrI)"),
+    sens = list(xlab = "Sensitivity",        col = "Sensitivity (95% CrI)"),
+    spec = list(xlab = "Specificity",        col = "Specificity (95% CrI)")
+  )
+
+  if (!metric %in% names(label_map)) {
+    stop("Unknown metric: ", metric)
+  }
+
+  xlab      <- label_map[[metric]]$xlab
+  col_label <- label_map[[metric]]$col
+
 
   # keep only label columns that exist
   label_cols <- intersect(label_cols, names(sum_m$per_study))
@@ -166,9 +181,12 @@ plot_forest_metric_forestploter <- function(
     if (is.finite(pad) && pad > 0) xlim <- xlim + c(-pad, pad)
   }
 
-  # ensure 0 is visible (but do NOT force axis to start at 0)
-  xlim[1] <- min(xlim[1], 0, na.rm = TRUE)
-  xlim[2] <- max(xlim[2], 0, na.rm = TRUE)
+  if (!xlim_user) {
+    # ensure 0 is visible (but do NOT force axis to start at 0)
+    xlim[1] <- min(xlim[1], 0, na.rm = TRUE)
+    xlim[2] <- max(xlim[2], 0, na.rm = TRUE)
+  }
+
 
   # ---------- 6. Theme ----------
   tm <- forestploter::forest_theme(
@@ -189,6 +207,7 @@ plot_forest_metric_forestploter <- function(
     ci_column  = ci_col,
     xlab       = xlab,
     xlim       = xlim,
+    ticks_at   = xticks,
     ref_line   = pooled[center],
     # vert_line = pooled[center],
     theme      = tm
