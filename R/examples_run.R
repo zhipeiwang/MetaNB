@@ -1,6 +1,6 @@
 # setwd("C:/Users/P70096364/OneDrive - Maastricht University/MetaNB/R")
 
-lapply(c("MA_NB_tri.R", "model_text_weak.R", "model_text_wishart.R", "helpers.R", "plot_forest.R"), source)
+lapply(c("MA_NB_tri.R", "model_text_weak.R", "model_text_wishart.R", "helpers.R", "plot_forest.R", "MA_NB_tri_voi.R"), source)
 load("data_examples.RData")
 
 # load libraries
@@ -181,10 +181,63 @@ fit_voi$diagnostics
 voi_res <- MA_NB_tri_voi(
   data_ADNEXCA125_full,
   tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  # center_row = 5,
+  # center_label_cols = c("Publication", "Country"),
   prior_type = "weak",
   t = 0.1,
   auto_resample = TRUE
 )
 
-voi_res$metrics
-voi_res$diagnostics
+options(scipen = 999)
+glimpse(voi_res$metrics)
+c(voi_res$metrics$EVPI_population_perfectinfo,
+  voi_res$metrics$EVPPI_cluster_perfectprevalenceinfo,voi_res$metrics$EVPI_cluster_perfectinfo)
+glimpse(voi_res$diagnostics)
+
+
+
+# Make a copy so we don't overwrite our original
+dat_test <- data_ADNEXCA125_full
+
+# Initialize fake CI columns with NA
+dat_test$sens_ci_low  <- NA_real_
+dat_test$sens_ci_high <- NA_real_
+dat_test$spec_ci_low  <- NA_real_
+dat_test$spec_ci_high <- NA_real_
+
+# Choose some rows to "pretend" we have reported CIs for
+# Pick spread-out indices so you can find them easily
+idx_rep <- c(2, 7, 13, 21, 29, 37)
+
+# Compute observed sens/spec (for sanity checks / potential point override)
+obs_sens <- with(dat_test, tp / n_event)
+obs_spec <- with(dat_test, tn / n_nonevent)
+
+# Create fake reported CIs that are clearly different from your Bayesian CrIs:
+# Identical, very narrow "reported" intervals
+dat_test$sens_ci_low[idx_rep]  <- 0.910
+dat_test$sens_ci_high[idx_rep] <- 0.915
+
+dat_test$spec_ci_low[idx_rep]  <- 0.980
+dat_test$spec_ci_high[idx_rep] <- 0.985
+
+# Optional: quick sanity display (should show numbers only in idx_rep rows)
+dat_test[idx_rep, c("sens_ci_low","sens_ci_high","spec_ci_low","spec_ci_high")]
+
+plot_forest_metric_forestploter(
+  sum,
+  data = dat_test,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  prev_col = "Prev",
+  metric = "sens",
+  use_reported_ci = TRUE,
+  reported_low_col = "sens_ci_low",
+  reported_high_col = "sens_ci_high",
+  # optional for easier viewing:
+  xlim = c(0.7, 1),
+  xticks = seq(0.7, 1, by = 0.05),
+  file_png = "forest_sens.png",
+  file_pdf = "forest_sens.pdf"
+)
+
+

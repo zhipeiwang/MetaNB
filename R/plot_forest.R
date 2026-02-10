@@ -9,6 +9,11 @@ plot_forest_metric_forestploter <- function(
     xlim = NULL,
     xticks = NULL,
     plot_col_width = 50,
+    data = NULL,
+    use_reported_ci = FALSE,
+    reported_low_col = NULL,
+    reported_high_col = NULL,
+    reported_est_col = NULL,
     file_png = NULL,
     file_pdf = NULL
 ) {
@@ -29,11 +34,16 @@ plot_forest_metric_forestploter <- function(
   center_missing <- missing(center)
   center <- match.arg(center)
 
-  if (center_missing) {
-    message("Using center = '", center, "' (default). Set center = 'Mean' if desired.")
+  if (!(metric %in% c("sens","spec") && isTRUE(use_reported_ci))) {
+    if (center_missing) {
+      message("Using center = '", center, "' (default). Set center = 'Mean' if desired.")
+    } else {
+      message("Using center = '", center, "'.")
+    }
   } else {
-    message("Using center = '", center, "'.")
+    message("Using observed point estimates for ", metric, " (center ignored).")
   }
+
 
   # P(useful) (NB only)
   prob_useful <- NULL
@@ -46,16 +56,28 @@ plot_forest_metric_forestploter <- function(
   label_map <- list(
     NB   = list(xlab = "Net Benefit",        col = "NB (95% CrI)"),
     RU   = list(xlab = "Relative Utility",   col = "RU (95% CrI)"),
-    sens = list(xlab = "Sensitivity",        col = "Sensitivity (95% CrI)"),
-    spec = list(xlab = "Specificity",        col = "Specificity (95% CrI)")
+    sens = list(xlab = "Sensitivity",        col = NULL),
+    spec = list(xlab = "Specificity",        col = NULL)
   )
 
   if (!metric %in% names(label_map)) {
     stop("Unknown metric: ", metric)
   }
 
-  xlab      <- label_map[[metric]]$xlab
-  col_label <- label_map[[metric]]$col
+  xlab <- label_map[[metric]]$xlab
+
+  # interval label for sens/spec depends on use_reported_ci
+  if (metric %in% c("sens", "spec")) {
+    interval_label <- if (isTRUE(use_reported_ci)) "CI" else "CrI"
+    col_label <- if (metric == "sens") {
+      paste0("Sensitivity (95% ", interval_label, ")")
+    } else {
+      paste0("Specificity (95% ", interval_label, ")")
+    }
+  } else {
+    col_label <- label_map[[metric]]$col
+  }
+
 
 
   # keep only label columns that exist
@@ -74,16 +96,73 @@ plot_forest_metric_forestploter <- function(
   }
 
 
-  # ---------- 1. Per-study table (sorted by mean) ----------
-  per <- sum_m$per_study %>%
-    dplyr::arrange(.data[[center]])
+  # ---------- 1. Per-study table (sorted by point estimate) ----------
+  per <- sum_m$per_study
 
+  # ---------- 1B. Optional: use observed sens/spec and reported CIs ----------
+  display_est <- per[[center]]
+  display_low <- per$Low
+  display_high <- per$High
+  used_reported_ci <- rep(FALSE, nrow(per))
+
+  if (isTRUE(use_reported_ci) && metric %in% c("sens", "spec")) {
+
+    # Use observed point estimate if available
+    if ("Observed" %in% names(per)) {
+      display_est <- per$Observed
+    } else if (!is.null(data) &&
+               all(c("tp","tn","n_event","n_nonevent") %in% names(data))) {
+      if (metric == "sens") display_est <- data$tp / data$n_event
+      if (metric == "spec") display_est <- data$tn / data$n_nonevent
+    }
+
+    # Use reported CI if provided; fallback remains Bayesian CrI
+    if (!is.null(data) &&
+        !is.null(reported_low_col) && !is.null(reported_high_col) &&
+        reported_low_col %in% names(data) && reported_high_col %in% names(data)) {
+
+      rep_low  <- suppressWarnings(as.numeric(data[[reported_low_col]]))
+      rep_high <- suppressWarnings(as.numeric(data[[reported_high_col]]))
+
+      has_rep <- !is.na(rep_low) & !is.na(rep_high)
+
+      display_low[has_rep] <- rep_low[has_rep]
+      display_high[has_rep] <- rep_high[has_rep]
+      used_reported_ci[has_rep] <- TRUE
+    }
+
+    # Optional: use reported point estimate if user supplies it
+    if (!is.null(data) && !is.null(reported_est_col) &&
+        reported_est_col %in% names(data)) {
+      rep_est <- suppressWarnings(as.numeric(data[[reported_est_col]]))
+      has_est <- !is.na(rep_est)
+      display_est[has_est] <- rep_est[has_est]
+    }
+
+    # Sort by what you're actually plotting
+    ord <- order(display_est)
+    per <- per[ord, , drop = FALSE]
+    display_est <- display_est[ord]
+    display_low <- display_low[ord]
+    display_high <- display_high[ord]
+    used_reported_ci <- used_reported_ci[ord]
+  } else {
+    # original sorting for NB/RU or Bayesian-only sens/spec
+    per <- per %>% dplyr::arrange(.data[[center]])
+  }
+
+
+  # Add a flag column to indicate which rows used reported CIs (for potential styling later)
   df <- per %>%
     dplyr::mutate(
+      .display_est = display_est,
+      .display_low = display_low,
+      .display_high = display_high,
       ` `      = strrep(" ", plot_col_width),
-      value_ci = sprintf("%5.2f  [%.2f; %.2f]", .data[[center]], Low, High)
+      value_ci = sprintf("%5.2f  [%.2f; %.2f]", .display_est, .display_low, .display_high)
     ) %>%
     dplyr::select(dplyr::all_of(label_cols), ` `, value_ci)
+
 
   # pretty formatting (only if user tells us which columns these are)
   if (!is.null(prev_col) && prev_col %in% names(df)) {
@@ -147,9 +226,10 @@ plot_forest_metric_forestploter <- function(
 
   # ---------- 5. Numeric vectors ----------
   # base vectors (studies + pooled + prediction interval)
-  est   <- c(per[[center]], pooled[center], NA)
-  lower <- c(per$Low,       pooled["Low"],  NA)
-  upper <- c(per$High,      pooled["High"], NA)
+  est   <- c(display_est,  pooled[center], NA)
+  lower <- c(display_low,  pooled["Low"],  NA)
+  upper <- c(display_high, pooled["High"], NA)
+
 
   is_sum <- c(
     rep(FALSE, nrow(per)),

@@ -436,4 +436,27 @@ calc_sigma <- function(df) {
   out
 }
 
+# for the precision/ESS stopping rule
+append_mcmc_list <- function(old, new) {
+  stopifnot(inherits(new, "mcmc.list"))
+  if (is.null(old)) return(new)
+  stopifnot(inherits(old, "mcmc.list"))
+  if (length(old) != length(new)) stop("Different number of chains.")
+
+  out <- vector("list", length(old))
+  for (k in seq_along(old)) {
+    m_old <- as.matrix(old[[k]])
+    m_new <- as.matrix(new[[k]])
+
+    # Safety: align columns in case ordering differs
+    common <- intersect(colnames(m_old), colnames(m_new))
+    if (length(common) == 0) stop("No common variables between old and new samples.")
+    m_old <- m_old[, common, drop = FALSE]
+    m_new <- m_new[, common, drop = FALSE]
+
+    out[[k]] <- coda::mcmc(rbind(m_old, m_new))
+  }
+  coda::mcmc.list(out)
+}
+
 
