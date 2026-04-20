@@ -1,49 +1,121 @@
-plot_forest_metric_forestploter <- function(
-    sum,
-    label_cols = c("Publication", "Country", "N", "Prev"),
+#' Forest plot for trivariate meta-analysis summaries
+#'
+#' @description
+#' Creates a forest plot for net benefit, relative utility, sensitivity, or
+#' specificity using posterior samples from a Bayesian trivariate meta-analysis
+#' and the corresponding study-level data.
+#'
+#' @param samples A `coda::mcmc.list` of posterior samples, typically
+#'   `fit$samples` from [MA_NB_tri()].
+#' @param data A data frame containing study-level data and labels.
+#' @param label_cols Character vector of columns in `data` to display in the
+#'   plot table.
+#' @param study_label_col Optional column in `data` used for study labels and
+#'   summary row labels. If `NULL`, the first entry of `label_cols` is used.
+#' @param metric Metric to plot. One of `"NB"`, `"RU"`, `"sens"`, or `"spec"`.
+#' @param center Summary measure used for pooled point estimates. One of
+#'   `"Median"` or `"Mean"`.
+#' @param t Threshold probability. Required when observed-study net benefit or
+#'   analytical net benefit confidence intervals are used.
+#' @param xlim Optional x-axis limits.
+#' @param xticks Optional tick marks for the x-axis.
+#' @param plot_col_width Width of the blank plotting column used internally by
+#'   `forestploter`.
+#' @param reported_low_col Optional column in `data` containing reported lower
+#'   interval bounds.
+#' @param reported_high_col Optional column in `data` containing reported upper
+#'   interval bounds.
+#' @param reported_est_col Optional column in `data` containing reported point
+#'   estimates.
+#' @param interval_fallback Optional fallback interval method. If `NULL`, a
+#'   default is chosen based on `metric`.
+#' @param mark_imputed Logical; whether to mark study rows where displayed point
+#'   estimates or intervals were filled in rather than fully taken from
+#'   reported study values.
+#' @param file_png Optional file path for saving the plot as PNG.
+#' @param file_pdf Optional file path for saving the plot as PDF.
+#'
+#' @returns
+#' A forest plot object produced by the `forestploter` package. The plot is also
+#' drawn as a side effect.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' fit <- MA_NB_tri(data, tp = tp, tn = tn,
+#'                  n_event = n_event, n_nonevent = n_nonevent,
+#'                  t = 0.1, prior_type = "weak", seed = 123)
+#' plot_forest(samples = fit$samples, data = data, metric = "NB",
+#'             label_cols = c("Publication", "Country", "N", "Prev"),
+#'             t = 0.1)
+#' }
+plot_forest <- function(
+    samples,
+    data,
+    label_cols = NULL,
     study_label_col = NULL,
-    prev_col = NULL,
-    n_col = NULL,
     metric = c("NB", "RU", "sens", "spec"),
     center = c("Median", "Mean"),
+    t = NULL,
     xlim = NULL,
     xticks = NULL,
     plot_col_width = 50,
-    data = NULL,
-    use_reported_ci = FALSE,
     reported_low_col = NULL,
     reported_high_col = NULL,
     reported_est_col = NULL,
+    interval_fallback = NULL,
+    mark_imputed = TRUE,
     file_png = NULL,
     file_pdf = NULL
 ) {
   xlim_user <- !is.null(xlim)
-
   metric <- match.arg(metric)
+
+  # ---- samples -> plot summary ----
+  if (!inherits(samples, "mcmc.list")) {
+    stop("`samples` must be a coda::mcmc.list (e.g., fit$samples).", call. = FALSE)
+  }
+  if (missing(data) || is.null(data) || !is.data.frame(data)) {
+    stop("`data` must be provided as a data.frame for study labels.", call. = FALSE)
+  }
+
+  # Decide which families to summarize based on the metric we are plotting
+  targets <- if (metric == "NB") c("NB", "probuseful") else metric
+  targets_per_study <- metric
+
+  # Build the plot-ready summary object internally
+  sum <- .summarize_for_forestplot(
+    samples = samples,
+    data = data,
+    label_cols = label_cols,
+    targets = targets,
+    targets_per_study = targets_per_study,
+    return_known = FALSE
+  )
   sum_m  <- sum[[metric]]
 
   if (is.null(sum_m)) {
-    stop("Metric ", metric, " not found in summary object.")
+    stop("Metric ", metric, " not found in plot summary.", call. = FALSE)
   }
   if (is.null(sum_m$per_study)) {
-    stop("No per-study results found for metric ", metric,
-         ". Did you return it in MA_NB_tri() and summarize it?")
+    stop("No per-study results found for metric ", metric, ".", call. = FALSE)
+  }
+  if (metric == "NB" && is.null(t) &&
+      (is.null(reported_est_col) || is.null(reported_low_col) || is.null(reported_high_col) ||
+       identical(interval_fallback, "analytic"))) {
+    message("`t` is required for observed-study NB calculations or analytical NB CI fallback.")
   }
 
 
   center_missing <- missing(center)
   center <- match.arg(center)
 
-  if (!(metric %in% c("sens","spec") && isTRUE(use_reported_ci))) {
-    if (center_missing) {
-      message("Using center = '", center, "' (default). Set center = 'Mean' if desired.")
-    } else {
-      message("Using center = '", center, "'.")
-    }
+  if (center_missing) {
+    message("Using center = '", center, "' (default). Set center = 'Mean' if desired.")
   } else {
-    message("Using observed point estimates for ", metric, " (center ignored).")
+    message("Using center = '", center, "'.")
   }
-
 
   # P(useful) (NB only)
   prob_useful <- NULL
@@ -66,30 +138,28 @@ plot_forest_metric_forestploter <- function(
 
   xlab <- label_map[[metric]]$xlab
 
-  # interval label for sens/spec depends on use_reported_ci
-  if (metric %in% c("sens", "spec")) {
-    interval_label <- if (isTRUE(use_reported_ci)) "CI" else "CrI"
-    col_label <- if (metric == "sens") {
-      paste0("Sensitivity (95% ", interval_label, ")")
-    } else {
-      paste0("Specificity (95% ", interval_label, ")")
-    }
-  } else {
-    col_label <- label_map[[metric]]$col
+  # point estimate labels
+  point_col_label <- switch(
+    metric,
+    NB = "NB",
+    RU = "RU",
+    sens = "Sens",
+    spec = "Spec"
+  )
+
+
+  # keep only label columns that exist in the data user provided
+  label_cols <- intersect(label_cols, names(data))
+  if (length(label_cols) == 0) {
+    stop("None of `label_cols` exist in `data`.", call. = FALSE)
   }
-
-
-
-  # keep only label columns that exist
-  label_cols <- intersect(label_cols, names(sum_m$per_study))
-  if (length(label_cols) == 0) stop("None of `label_cols` exist in per-study results.", call. = FALSE)
 
   # which column should receive "Pooled estimate", etc.
   if (is.null(study_label_col)) {
     study_label_col <- label_cols[1]
   } else {
-    if (!study_label_col %in% names(sum_m$per_study)) {
-      stop("`study_label_col` = '", study_label_col, "' not found in per-study results.", call. = FALSE)
+    if (!study_label_col %in% names(data)) {
+      stop("`study_label_col` = '", study_label_col, "' not found in `data`.", call. = FALSE)
     }
     # ensure it's included in the table
     if (!study_label_col %in% label_cols) label_cols <- c(study_label_col, label_cols)
@@ -99,90 +169,91 @@ plot_forest_metric_forestploter <- function(
   # ---------- 1. Per-study table (sorted by point estimate) ----------
   per <- sum_m$per_study
 
-  # ---------- 1B. Optional: use observed sens/spec and reported CIs ----------
-  display_est <- per[[center]]
-  display_low <- per$Low
-  display_high <- per$High
-  used_reported_ci <- rep(FALSE, nrow(per))
-
-  if (isTRUE(use_reported_ci) && metric %in% c("sens", "spec")) {
-
-    # Use observed point estimate if available
-    if ("Observed" %in% names(per)) {
-      display_est <- per$Observed
-    } else if (!is.null(data) &&
-               all(c("tp","tn","n_event","n_nonevent") %in% names(data))) {
-      if (metric == "sens") display_est <- data$tp / data$n_event
-      if (metric == "spec") display_est <- data$tn / data$n_nonevent
-    }
-
-    # Use reported CI if provided; fallback remains Bayesian CrI
-    if (!is.null(data) &&
-        !is.null(reported_low_col) && !is.null(reported_high_col) &&
-        reported_low_col %in% names(data) && reported_high_col %in% names(data)) {
-
-      rep_low  <- suppressWarnings(as.numeric(data[[reported_low_col]]))
-      rep_high <- suppressWarnings(as.numeric(data[[reported_high_col]]))
-
-      has_rep <- !is.na(rep_low) & !is.na(rep_high)
-
-      display_low[has_rep] <- rep_low[has_rep]
-      display_high[has_rep] <- rep_high[has_rep]
-      used_reported_ci[has_rep] <- TRUE
-    }
-
-    # Optional: use reported point estimate if user supplies it
-    if (!is.null(data) && !is.null(reported_est_col) &&
-        reported_est_col %in% names(data)) {
-      rep_est <- suppressWarnings(as.numeric(data[[reported_est_col]]))
-      has_est <- !is.na(rep_est)
-      display_est[has_est] <- rep_est[has_est]
-    }
-
-    # Sort by what you're actually plotting
-    ord <- order(display_est)
-    per <- per[ord, , drop = FALSE]
-    display_est <- display_est[ord]
-    display_low <- display_low[ord]
-    display_high <- display_high[ord]
-    used_reported_ci <- used_reported_ci[ord]
-  } else {
-    # original sorting for NB/RU or Bayesian-only sens/spec
-    per <- per %>% dplyr::arrange(.data[[center]])
+  # ---------- 1B. Build displayed per-study values ----------
+  if (is.null(interval_fallback)) {
+    interval_fallback <- switch(
+      metric,
+      sens = "frequentist",
+      spec = "frequentist",
+      NB   = "analytic",
+      RU   = "model",
+      "none"
+    )
   }
 
+  disp <- build_per_study_display(
+    metric = metric,
+    per = per,
+    data = data,
+    center = center,
+    t = t,
+    reported_est_col = reported_est_col,
+    reported_low_col = reported_low_col,
+    reported_high_col = reported_high_col,
+    interval_fallback = interval_fallback
+  )
 
-  # Add a flag column to indicate which rows used reported CIs (for potential styling later)
+  display_est  <- disp$display_est
+  display_low  <- disp$display_low
+  display_high <- disp$display_high
+
+  # interval labels
+  interval_col_label <- infer_interval_label(
+    metric = metric,
+    interval_source = disp$interval_source
+  )
+
+  emit_forest_messages(
+    metric = metric,
+    point_source = disp$point_source,
+    interval_source = disp$interval_source,
+    mark_imputed = mark_imputed
+  )
+
+  # sort by what is actually displayed
+  ord <- order(display_est)
+  per <- per[ord, , drop = FALSE]
+  disp <- disp[ord, , drop = FALSE]
+  display_est  <- display_est[ord]
+  display_low  <- display_low[ord]
+  display_high <- display_high[ord]
+
+
+  # Mark rows where displayed values were filled in rather than fully taken from reported study values
+  point_flag <- ifelse(
+    mark_imputed & disp$point_source != "reported",
+    "\u2020",   # dagger
+    ""
+  )
+
+  interval_flag <- ifelse(
+    mark_imputed & disp$interval_source != "reported",
+    "*",
+    ""
+  )
+
   df <- per %>%
     dplyr::mutate(
       .display_est = display_est,
       .display_low = display_low,
       .display_high = display_high,
-      ` `      = strrep(" ", plot_col_width),
-      value_ci = sprintf("%5.2f  [%.2f; %.2f]", .display_est, .display_low, .display_high)
+      ` ` = strrep(" ", plot_col_width),
+      value_est = sprintf("%.2f%s", .display_est, point_flag),
+      value_int = sprintf("[%.2f; %.2f]%s", .display_low, .display_high, interval_flag)
     ) %>%
-    dplyr::select(dplyr::all_of(label_cols), ` `, value_ci)
+    dplyr::select(dplyr::all_of(label_cols), ` `, value_est, value_int)
 
-
-  # pretty formatting (only if user tells us which columns these are)
-  if (!is.null(prev_col) && prev_col %in% names(df)) {
-    df <- df %>% dplyr::mutate(!!prev_col := scales::percent(as.numeric(.data[[prev_col]]), accuracy = 1))
-  }
-
-  if (!is.null(n_col) && n_col %in% names(df)) {
-    df <- df %>% dplyr::mutate(!!n_col := format(as.numeric(.data[[n_col]]),
-                                                 big.mark = ",", scientific = FALSE, trim = TRUE))
-  }
 
   # IMPORTANT: make label columns character so bind_rows works with blank rows
   df <- df %>%
     dplyr::mutate(dplyr::across(dplyr::all_of(label_cols), as.character))
 
 
-  names(df)[ncol(df)] <- col_label
+  names(df)[ncol(df) - 1] <- point_col_label
+  names(df)[ncol(df)] <- interval_col_label
 
   # build a "blank row" template
-  make_row <- function(title, value_ci) {
+  make_row <- function(title, value_est = "", value_int = "") {
     row <- as.list(rep("", length(label_cols)))
     names(row) <- label_cols
     row[[study_label_col]] <- title
@@ -190,10 +261,12 @@ plot_forest_metric_forestploter <- function(
     row <- tibble::as_tibble(row) %>%
       dplyr::mutate(
         ` ` = strrep(" ", plot_col_width),
-        value_ci = value_ci
+        value_est = value_est,
+        value_int = value_int
       )
 
-    names(row)[ncol(row)] <- col_label
+    names(row)[ncol(row) - 1] <- point_col_label
+    names(row)[ncol(row)] <- interval_col_label
     row
   }
 
@@ -207,22 +280,25 @@ plot_forest_metric_forestploter <- function(
   # ---------- 2. Pooled row (model strategy only) ----------
   pooled_row <- make_row(
     "Pooled estimate",
-    sprintf("%5.2f  [%.2f; %.2f]", pooled[center], pooled["Low"], pooled["High"])
+    value_est = sprintf("%.2f", pooled[center]),
+    value_int = sprintf("[%.2f; %.2f]", pooled["Low"], pooled["High"])
   )
 
   # ---------- 3. Prediction interval row ----------
   pred_row <- make_row(
     "Prediction interval",
-    sprintf("[%.2f; %.2f]", pred["Low"], pred["High"])
+    value_est = "",
+    value_int = sprintf("[%.2f; %.2f]", pred["Low"], pred["High"])
   )
 
   # ---------- 3B. P(useful) row (text only) ----------
-  pu_row <- if (show_pu) make_row("P(useful)", sprintf("%.2f", prob_useful)) else NULL
-
+  pu_row <- if (show_pu) {
+    make_row("P(useful)", value_est = sprintf("%.2f", prob_useful), value_int = "")
+  } else NULL
 
   # ---------- 4. Combine table ----------
   tbl <- dplyr::bind_rows(df, pooled_row, pred_row, pu_row) %>%
-    dplyr::mutate(dplyr::across(everything(), as.character))
+    dplyr::mutate(dplyr::across(dplyr::everything(), as.character))
 
   # ---------- 5. Numeric vectors ----------
   # base vectors (studies + pooled + prediction interval)
@@ -244,6 +320,7 @@ plot_forest_metric_forestploter <- function(
     upper <- c(upper, NA)
     is_sum <- c(is_sum, FALSE)
   }
+
   ci_col <- which(names(tbl) == " ")
 
   # ---------- 5B. X-limits (avoid truncation) ----------
@@ -315,17 +392,18 @@ plot_forest_metric_forestploter <- function(
   wh <- forestploter::get_wh(p, unit = "in")
 
   if (!is.null(file_png)) {
-    png(file_png, width = wh[1], height = wh[2],
+    grDevices::png(file_png, width = wh[1], height = wh[2],
         units = "in", res = 300, bg = "white")
     plot(p)
-    dev.off()
+    grDevices::dev.off()
   }
 
   if (!is.null(file_pdf)) {
     grDevices::cairo_pdf(file_pdf, width = wh[1], height = wh[2], bg = "white")
     plot(p)
-    dev.off()
+    grDevices::dev.off()
   }
 
   invisible(p)
 }
+

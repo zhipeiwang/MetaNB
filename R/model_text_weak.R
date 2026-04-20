@@ -1,5 +1,5 @@
 # return JAGS model text for weak realistic priors
-get_tri_model_weak <- function(include_EVPI = compute_EVPI, J = 1000) {
+get_tri_model_weak <- function(include_EVPI = FALSE, J = 1000) {
 
   model_string <- "
 # Weak realistic priors
@@ -41,9 +41,9 @@ pooledNB_TA<-pooledprev-(1-pooledprev)*t/(1-t)
 pooledRU<-(pooledNB - max(pooledNB_TA, 0) ) / (pooledprev - max(pooledNB_TA, 0))
 
 # pooled NB / NB_TA / RU at known prevalence
-pooledNB_ref<-pooledsens*prev_ref-(1-pooledspec)*(1-prev_ref)*t/(1-t)
-pooledNB_TA_ref<-prev_ref-(1-prev_ref)*t/(1-t)
-pooledRU_ref <- (pooledNB_ref - max(pooledNB_TA_ref, 0)) / (prev_ref - max(pooledNB_TA_ref, 0))
+pooledNB_known<-pooledsens*prev_known-(1-pooledspec)*(1-prev_known)*t/(1-t)
+pooledNB_TA_known<-prev_known-(1-prev_known)*t/(1-t)
+pooledRU_known <- (pooledNB_known - max(pooledNB_TA_known, 0)) / (prev_known - max(pooledNB_TA_known, 0))
 
 
 # priors
@@ -103,23 +103,23 @@ probuseful<-equals(max(max(NBnew,NBnew_TA),0), NBnew)
 RUnew<-(NBnew - max(NBnew_TA, 0) ) / (prevnew - max(NBnew_TA, 0))
 
 # Predict new triad at known prevalence
-logitp.new.ref<-logit(prev_ref)
+logitp.new.known<-logit(prev_known)
 
-logitsens.new.ref ~ dnorm(etasens.new.ref,precsens)
-etasens.new.ref<-lambdasens0+lambdasens1*logitp.new.ref
+logitsens.new.known ~ dnorm(etasens.new.known,precsens)
+etasens.new.known<-lambdasens0+lambdasens1*logitp.new.known
 
-logitspec.new.ref~dnorm(etaspec.new.ref,precspec)
-etaspec.new.ref<-lambdaspec0+lambdaspec1*logitp.new.ref+lambdaspec2*logitsens.new.ref
+logitspec.new.known~dnorm(etaspec.new.known,precspec)
+etaspec.new.known<-lambdaspec0+lambdaspec1*logitp.new.known+lambdaspec2*logitsens.new.known
 
-sensnew.ref<-exp(logitsens.new.ref)/(1+exp(logitsens.new.ref))
-specnew.ref<-exp(logitspec.new.ref)/(1+exp(logitspec.new.ref))
+sensnew.known<-exp(logitsens.new.known)/(1+exp(logitsens.new.known))
+specnew.known<-exp(logitspec.new.known)/(1+exp(logitspec.new.known))
 
-NBnew_ref<- sensnew.ref*prev_ref-(1-specnew.ref)*(1-prev_ref)*t/(1-t)
-NBnew_TA_ref<-prev_ref-(1-prev_ref)*t/(1-t)
+NBnew_known<- sensnew.known*prev_known-(1-specnew.known)*(1-prev_known)*t/(1-t)
+NBnew_TA_known<-prev_known-(1-prev_known)*t/(1-t)
 
-probuseful_ref<-equals(max(max(NBnew_ref,NBnew_TA_ref),0),NBnew_ref)
+probuseful_known<-equals(max(max(NBnew_known,NBnew_TA_known),0),NBnew_known)
 
-RUnew_ref<-(NBnew_ref - max(NBnew_TA_ref, 0) ) / (prev_ref - max(NBnew_TA_ref, 0))
+RUnew_known<-(NBnew_known - max(NBnew_TA_known, 0) ) / (prev_known - max(NBnew_TA_known, 0))
 
 
   "

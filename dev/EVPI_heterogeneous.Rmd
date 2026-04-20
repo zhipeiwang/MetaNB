@@ -1,0 +1,116 @@
+---
+title: "EVPI_heterogeneous"
+author: "Kim Wang"
+date: "2026-04-20"
+output: html_document
+---
+
+
+
+```{r}
+prev_grid <- sort(unique(c(seq(0.05, 0.9, by = 0.1), 0.9, 0.60, seq(0.55, 0.6, by = 0.01), seq(0.01, 0.05, by = 0.01))))
+
+results_list <- vector("list", length(prev_grid))
+
+for (i in seq_along(prev_grid)) {
+  
+  p0 <- prev_grid[i]
+  
+  fit <- MA_NB_tri(
+    data = data_ADNEXCA125,
+    tp = tp,
+    tn = tn,
+    n_event = n_event,
+    n_nonevent = n_nonevent,
+    prior_type = "weak",
+    t = 0.1,
+    seed = 123,
+    prev_known = p0,
+    return_known = TRUE
+  )
+  
+  sum_res <- summarize_tri_ma(
+    samples = fit,
+    data = data_ADNEXCA125,
+    return_known = TRUE
+  )
+  
+  nb_model <- sum_res$NB$pooled_known$model
+  nb_ta    <- sum_res$NB$pooled_known$treat_all
+  
+  pi_model <- sum_res$NB$pred_known$model
+  pi_ta    <- sum_res$NB$pred_known$treat_all
+  
+  probuseful_known <- sum_res$probuseful$value_known
+  
+  means <- c(
+    treat_none = 0,
+    model = nb_model["Mean"],
+    treat_all = nb_ta["Mean"]
+  )
+  
+  winner <- names(means)[which.max(means)]
+  
+  results_list[[i]] <- data.frame(
+    prev_known = p0,
+    
+    NB_TN_mean = 0,
+    NB_TN_median = 0,
+    
+    NB_model_mean = unname(nb_model["Mean"]),
+    NB_model_median = unname(nb_model["Median"]),
+    NB_model_cri_low = unname(nb_model["Low"]),
+    NB_model_cri_high = unname(nb_model["High"]),
+    NB_model_pi_low = unname(pi_model["Low"]),
+    NB_model_pi_high = unname(pi_model["High"]),
+    
+    NB_TA_mean = unname(nb_ta["Mean"]),
+    NB_TA_median = unname(nb_ta["Median"]),
+    NB_TA_cri_low = unname(nb_ta["Low"]),
+    NB_TA_cri_high = unname(nb_ta["High"]),
+    NB_TA_pi_low = unname(pi_ta["Low"]),
+    NB_TA_pi_high = unname(pi_ta["High"]),
+    
+    probuseful_known = probuseful_known,
+    winner_strategy = winner
+  )
+}
+
+prev_strategy_df <- do.call(rbind, results_list)
+prev_strategy_df
+```
+
+```{r}
+prev_strategy_df %>%
+  dplyr::mutate(
+    winner_prev = dplyr::lag(winner_strategy),
+    switched = winner_strategy != winner_prev
+  ) %>%
+  filter(switched == TRUE)
+```
+
+```{r}
+prev_strategy_df <- prev_strategy_df %>%
+  dplyr::mutate(
+    winner_strategy = sub("\\..*$", "", winner_strategy)
+  ) %>%
+  dplyr::rename(probuseful = probuseful_known)
+
+prev_strategy_df_out <- prev_strategy_df %>%
+  dplyr::mutate(
+    dplyr::across(where(is.numeric), ~ round(.x, 4))
+  ) %>%
+  select(prev_known, NB_TN_mean, NB_model_mean, NB_TA_mean, probuseful, winner_strategy)
+
+library(flextable)
+library(officer)
+
+ft <- flextable(prev_strategy_df_out)
+ft <- autofit(ft)
+
+save_as_docx(
+  "Optimal strategy conditional prevalence" = ft,
+  path = "prev_strategy_table.docx"
+)
+```
+

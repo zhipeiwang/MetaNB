@@ -1,5 +1,5 @@
 # return JAGS model text for Wishart prior
-get_tri_model_wishart <- function(include_EVPI = compute_EVPI, J = 1000) {
+get_tri_model_wishart <- function(include_EVPI = FALSE, J = 1000) {
 
   model_string <- "
 # Inverse Wishart prior for the variance-covariance matrix
@@ -55,9 +55,9 @@ pooledRU<-(pooledNB - max(pooledNB_TA, 0) ) / (pooledprev - max(pooledNB_TA, 0))
 
 
 # pooled NB / NB_TA / RU at known prevalence
-pooledNB_ref<-pooledsens*prev_ref-(1-pooledspec)*(1-prev_ref)*t/(1-t)
-pooledNB_TA_ref<-prev_ref-(1-prev_ref)*t/(1-t)
-pooledRU_ref <- (pooledNB_ref - max(pooledNB_TA_ref, 0)) / (prev_ref - max(pooledNB_TA_ref, 0))
+pooledNB_known<-pooledsens*prev_known-(1-pooledspec)*(1-prev_known)*t/(1-t)
+pooledNB_TA_known<-prev_known-(1-prev_known)*t/(1-t)
+pooledRU_known <- (pooledNB_known - max(pooledNB_TA_known, 0)) / (prev_known - max(pooledNB_TA_known, 0))
 
 
 # ---------- Priors ----------
@@ -72,14 +72,14 @@ sensnew<-exp(logitsnew[2])/(1+exp(logitsnew[2]))
 specnew<-exp(logitsnew[3])/(1+exp(logitsnew[3]))
 NBnew<-sensnew*prevnew-(1-specnew)*(1-prevnew)*t/(1-t)
 NBnew_TA<-prevnew-(1-prevnew)*t/(1-t)
-NBnew_ref<-sensnew*prev_ref-(1-specnew)*(1-prev_ref)*t/(1-t)
-NBnew_TA_ref<-prev_ref-(1-prev_ref)*t/(1-t)
+NBnew_known<-sensnew*prev_known-(1-specnew)*(1-prev_known)*t/(1-t)
+NBnew_TA_known<-prev_known-(1-prev_known)*t/(1-t)
 
 probuseful<-equals(max(max(NBnew,NBnew_TA),0), NBnew)
-probuseful_ref<-equals(max(max(NBnew_ref,NBnew_TA_ref),0), NBnew_ref)
+probuseful_known<-equals(max(max(NBnew_known,NBnew_TA_known),0), NBnew_known)
 
 RUnew<-(NBnew - max(NBnew_TA, 0) ) / (prevnew - max(NBnew_TA, 0))
-RUnew_ref<-(NBnew_ref - max(NBnew_TA_ref, 0) ) / (prev_ref - max(NBnew_TA_ref, 0))
+RUnew_known<-(NBnew_known - max(NBnew_TA_known, 0) ) / (prev_known - max(NBnew_TA_known, 0))
 
   "
 if (include_EVPI) {

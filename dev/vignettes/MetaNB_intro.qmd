@@ -1,0 +1,401 @@
+---
+title: "Introduction to MetaNB"
+bibliography: references.bib
+author: "Kim (Zhipei) Wang"
+format:
+  html:
+    toc: true
+    number-sections: true
+editor: visual
+---
+
+```{css, echo = FALSE}
+.output {
+max-height: 500px;
+overflow-y: scroll;
+}
+```
+
+# Introduction
+
+This vignette provides a step-by-step introduction to the MetaNB package, which implements a trivariate random-effects meta-analysis of prevalence, sensitivity, and specificity, along with associated value-of-information (VOI) metrics for quantifying decision uncertainty. The trivariate random-effects meta-analysis is described in detail in [@wynants_random-effects_2018], and the associated VOI framework is described in \[ref\].
+
+The IOTA-ADNEX is a regression model that distinguishes between benign and several types of malignant adnexal masses [@calster_evaluating_2014]. The dataset used in this vignette is from a systematic review of 37 external validation studies of ADNEX [@barrenada_adnex_2024], in which sensitivity and specificity were meta-analyzed at the commonly used 10% risk of malignancy threshold.
+
+For illustration purposes, we restrict the dataset to studies in which ADNEX was used with CA125, and refer to this subset as data_ADNEXCA125. The dataset is available in the MetaNB package, and can be loaded using `data(data_ADNEXCA125)`. It contains the numbers of true positives and true negatives, numbers of events and non-events, reported sensitivity and specificity with corresponding confidence intervals, as well as study-level characteristics such as publication, country, sample size, and prevalence.
+
+We use this dataset to illustrate the workflow of running the trivariate meta-analysis, checking convergence, summarizing results, and creating forest plots. We also compare results obtained using different priors and briefly discuss the extension to value of information analysis.
+
+# Basic workflow
+
+## Running the trivariate random-effects meta-analysis
+
+```{r include=FALSE}
+# to be removed after having necessary package structure
+library(rjags)
+library(coda)
+library(tidyverse)
+library(forestploter)
+library(rlang)
+lapply(file.path("..", "R", c("MA_NB_tri.R", "model_text_weak.R", "model_text_wishart.R", "helpers.R", "plot_forest.R", "MA_NB_tri_voi.R")), source)
+load(file.path("..", "R", "data_examples.RData"))
+
+# to be added after having necessary package structure
+# library(MetaNB)
+# data(data_ADNEXCA125)
+```
+
+The trivariate meta-analysis takes the number of true positives (`tp`), true negatives (`tn`), the number of events (`n_event`) and the number of non-events (`n_nonevent`) as input. A threshold (t) for which true positives and true negatives are defined is also needed to compute the net benefit and related metrics.
+
+`MA_NB_tri()` fits the Bayesian trivariate random-effects model for prevalence, sensitivity, and specificity described in [@wynants_random-effects_2018]. By default, the model is fitted using weak realistic priors (`prior_type = "weak"`) under the product-normal parameterization using priors specified in [@wynants_random-effects_2018]. For most applications, the default prior settings can safely be used and do not require adjustment. The section on "Weak realistic priors (advanced options)" below provides more details on the implementation of the weak realistic priors and how to modify them if needed.
+
+The argument `return_vars` controls which parameters are returned. By default, we return the family of net benefit (NB) related quantities (pooledNB, pooledNB_TA, NBnew etc.) and the posterior probability of clinical usefulness (probuseful). Additional quantities can be requested if needed (see ?MA_NB_tri for details (package structure to be added)).
+
+```{r eval=FALSE}
+fit <- MA_NB_tri(data = data_ADNEXCA125, # data frame containing the data
+                 tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent, # column names in the data frame for the input data
+                 prior_type = "weak", # type of prior to use, either "weak" or "wishart"
+                 t = 0.1, # threshold for defining true positives and true negatives
+                 return_vars = c("NB", "RU", "probuseful", "sens", "spec", "pooledprev") # variables to return in the output
+                 )
+```
+
+```{r message=FALSE, echo=FALSE}
+#| cache: true
+#| class: output
+# cache is for avoiding re-running the code that's time-consuming every time we knit this file
+# The two identical code chunks are for first displaying the code without running, and second actually running the code and showing the output but without showing the code. This is because otherwise the scrollable feature would apply to both code and output, which is inconvenient for viewing.
+fit <- MA_NB_tri(data = data_ADNEXCA125,
+                 tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                 prior_type = "weak",
+                 t = 0.1,
+                 return_vars = c("NB", "RU", "probuseful", "sens", "spec", "pooledprev")
+                 )
+```
+
+The function can also compute predictive quantities for a new setting. If we have a plausible prevalence for the target setting, we can compute pooled and predictive quantities conditional on that prevalence by supplying `prev_known` and setting `return_known = TRUE` (see @wynants_random-effects_2018, Section 3.3.2).
+
+We can control the MCMC settings through arguments such as the number of chains(`n.chains`), adaptation iterations (`n.adapt`), burn-in (`burnin`), sampling iterations (`iter`), and thinning(`thin`). By default, the function runs 2 chains with 1000 iterations each, adaptation iterations of 1000, a burn-in of 3000 and a thinning of 1. After adaptation and burn-in, trace plots of a set of pooled quantities (for example `pooledsens`, `pooledspec`, `pooledprev`, `pooledNB`, `pooledNB_TA`, and `pooledRU`) are shown by default as a rough check. The set of nodes used for these trace plots can be adjusted via `diag_vars`. After fitting, we perform a formal convergence check on the posterior samples.
+
+### Weak realistic priors (advanced options)
+
+Here we briefly describes how the weak realistic priors are implemented in MetaNB. This is mainly relevant if we wish to modify hyperparameters or conduct prior sensitivity analyses.
+
+In our implementation, the logit prevalence is controlled by `etap`, and the logit sensitivity and specificity are defined through relationships that depend on prevalence:
+
+-   `etap` is the logit prevalence (prior: `etap ~ dnorm(mu_etap, tau_etap)`).
+
+-   `lambdasens0` and `lambdasens1` define the logit sensitivity as `lambdasens0 + lambdasens1 * logitp`.
+
+-   `lambdaspec0`, `lambdaspec1`, and `lambdaspec2` define the logit specificity as `lambdaspec0 + lambdaspec1 * logitp + lambdaspec2 * logitsens`.
+
+Between-study heterogeneity is represented through variance parameters for prevalence, sensitivity, and specificity (`varprev`, `varsens`, `varspec`), with half-normal priors. Correlations among the three outcomes are represented by `corr.sens.spec`, `corr.spec.prev`, and `corr.sens.prev`. In our specification, two correlations (correlations between logit sensitivity and logit specificity, and between logit specificity and logit prevalence) use Fisher-z normal priors (`zss`, `zsp`) and one correlation uses a uniform prior (`corr.sens.prev ~ dunif(a_csp, b_csp)`).
+
+We can override any subset of these hyperparameters using `weak_priors = list(...)`. Any values not supplied remain at their defaults, which makes it straightforward to run prior sensitivity analyses.
+
+For example, to change only the prior mean and variance for `etap` (the logit prevalence), we can supply:
+
+```{r eval=FALSE}
+MA_NB_tri(data = data_ADNEXCA125,
+          tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+          prior_type = "weak",
+          t = 0.1,
+          return_vars = c("NB", "RU", "probuseful", "sens", "spec", "pooledprev"),
+          weak_priors = list(mu_etap = -0.9, tau_etap = 0.001)
+          )
+```
+
+## Convergence check for posteriors
+
+Earlier, we inspected trace plots of a set of pooled quantities during the fitting process as a quick visual diagnostic. After fitting the model and obtaining the posterior samples, we can perform a formal convergence check using the returned MCMC output.
+
+The fitted object contains the posterior samples as a `coda::mcmc.list` object. We can use the `traceplot()` function from the `coda` package to visualize the MCMC chains for selected parameters. The parameters must be included via the `return_vars` argument when fitting the model. For example, to check the trace plots for the pooled sensitivity, pooled prevalence, pooled specificity, pooled net benefit, pooled net benefit for the treat all strategy, and pooled relative utility, we can run:
+
+```{r eval=FALSE}
+traceplot(fit$samples[, c("pooledsens","pooledprev","pooledspec","pooledNB", "pooledNB_TA", "pooledRU")])
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+traceplot(fit$samples[, c("pooledsens","pooledprev","pooledspec","pooledNB", "pooledNB_TA", "pooledRU")])
+```
+
+By default, we run two chains. When examining a trace plot, we look for the following:
+
+-   The chains fluctuate around a stable level without obvious trends.
+
+-   The chains overlap substantially and explore the same range of values.
+
+-   There are no long periods where one chain stays in a very different range than the other.
+
+If the chains appear to mix well and fluctuate in a similar range, we typically consider convergence to be adequate. If the chains remain separated or show strong trends, this indicates they fail to converge, and we may consider increasing the number of iterations or burn-in.
+
+## Posterior summaries
+
+After checking that the chains have mixed well, we summarize the posterior distributions of the quantities we care about. The function `summarize_tri_ma()` provides a convenient summary of the fitted trivariate meta-analysis. We pass the `fit` or `fit$samples` to the function, and specify the metrics we want to summarize using the `metrics`. Note, summaries can only be computed for quantities that were sampled and returned by the model fitting function. In practice, this means that the relevant quantities must have been included in `return_vars` when fitting the model.
+
+In MetaNB, some summary targets are families of related quantities, while others are single nodes from the model. Family metrics such as `NB`, `RU`, `sens`, and `spec` can include pooled summaries, predictive summaries for a new setting, and optionally per-study summaries. In contrast, quantities such as `pooledprev` correspond to a single model node and therefore return only a single posterior summary (mean, median, and 95% credible interval), without predictive or per-study summaries.
+
+To summarize the main pooled and predictive quantities, we can run:
+
+```{r eval=FALSE}
+summarize_tri_ma(
+  fit,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "RU", "probuseful", "sens", "spec"),
+  per_study_metrics = c("NB", "RU", "sens", "spec"),
+  return_known = FALSE,
+  include_per_study = FALSE)
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+summarize_tri_ma(
+  fit,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "RU", "probuseful", "sens", "spec"),
+  per_study_metrics = c("NB", "RU", "sens", "spec"),
+  return_known = FALSE,
+  include_per_study = FALSE)
+```
+
+This returns a named list with one entry per requested metric. For `NB`, `RU`, `sens`, and `spec`, the output may contain up to three types of summaries: - **pooled**: the meta-analytic summary across studies (posterior mean, median, and 95% credible interval), - **predictive**: the expected range for a new setting (95% prediction interval), - **per-study**: study-specific summaries for each study, if requested.
+
+For example, `NB$pooled` contains the pooled net benefit for the model and the treat-all strategy, while `NB$predictive` contains the corresponding prediction intervals for a new setting. Similarly, `RU`, `sens`, and `spec` return pooled and predictive summaries, and may also include per-study summaries when requested. The quantity `probuseful` is different in that it returns a single posterior probability, stored in `$probuseful$value`.
+
+If we are only interested in the pooled and predictive summaries, we can keep `include_per_study = FALSE`, as in the example above. If we want study-specific summaries, we can request them by setting `include_per_study = TRUE` (which is the default) and specifying which metrics to include per-study estimates for via `per_study_metrics`.
+
+The first few columns of the per-study summary data frame correspond to study labels specified in `label_cols`, and the remaining columns are the summary statistics for the per-study estimates of `NB` (mean, median, 95% credible interval lower and higher bounds). We only need to provide `data` and `label_cols` when per-study summaries are requested, because these are used to attach study information to the output. Note: The data frame supplied to `summarize_tri_ma()` must have the same row order as the data used when fitting the model. This ensures that the study labels correspond to the correct study-specific estimates.
+
+```{r eval=FALSE}
+summarize_tri_ma(
+  fit,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "sens"),
+  per_study_metrics = c("NB", "sens"),
+  return_known = FALSE,
+  include_per_study = TRUE)$NB$per_study
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+summarize_tri_ma(
+  fit,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "sens"),
+  per_study_metrics = c("NB", "sens"),
+  return_known = FALSE,
+  include_per_study = TRUE)$NB$per_study
+```
+
+For parameters that correspond to a single model node (rather than a family of related quantities), an example being `pooledprev`, the function returns only the pooled summary (mean, median, and 95% credible interval) without predictive or per-study summaries.
+
+```{r eval=FALSE}
+summarize_tri_ma(
+  fit,
+  data = data_ADNEXCA125,
+  metrics = c("pooledprev"),
+  return_known = TRUE)
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+summarize_tri_ma(
+  fit,
+  data = data_ADNEXCA125,
+  metrics = c("pooledprev"),
+  return_known = TRUE)
+```
+
+If we want summaries conditional on a known prevalence in the target setting, we can specify that prevalence when fitting the model using the `prev_known` argument.
+
+To make these quantities available in the output, we must also set `return_known = TRUE` when fitting the model. When summarizing the results, we again set `return_known = TRUE` to include these quantities in the summary.
+
+This optional addition is available for `NB`, `RU`, and `probuseful`.
+
+```{r eval=FALSE}
+# fit the model with a known prevalence for the target setting
+fit_prev05 <- MA_NB_tri(data = data_ADNEXCA125,
+                 tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                 prior_type = "weak",
+                 t = 0.1,
+                 prev_known = 0.5, # example known prevalence for the target setting
+                 return_vars = c("NB", "RU", "probuseful", "sens", "spec", "pooledprev"),
+                 return_known = TRUE
+                 )
+
+# summarize the results, including the quantities conditional on the known prevalence
+summarize_tri_ma(
+  fit_prev05,
+  data = data_ADNEXCA125,
+  metrics = c("NB"),
+  per_study_metrics = c("NB"),
+  return_known = TRUE)
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+# fit the model with a known prevalence for the target setting
+fit_prev05 <- MA_NB_tri(data = data_ADNEXCA125,
+                 tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                 prior_type = "weak",
+                 t = 0.1,
+                 prev_known = 0.5, # example known prevalence for the target setting
+                 return_vars = c("NB", "RU", "probuseful", "sens", "spec", "pooledprev"),
+                 return_known = TRUE
+                 )
+
+# summarize the results, including the quantities conditional on the known prevalence
+summarize_tri_ma(
+  fit_prev05,
+  data = data_ADNEXCA125,
+  metrics = c("NB"),
+  per_study_metrics = c("NB"),
+  return_known = TRUE)
+```
+
+In the next section, we visualize the per-study and pooled net benefit estimates using forest plots and interpret the results in the context of the ADNEX example.
+
+## Forest plots
+
+```{r}
+#| cache: true
+#| out-width: 100%
+#| fig-width: 12
+#| fig-height: 10
+plot_forest(
+  fit$samples,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  prev_col = "Prev",
+  metric = "NB",
+#  center = "Median",
+  xlim = c(-0.1, 0.7),
+  file_png = "forest_nb.png",
+  file_pdf = "forest_nb.pdf"
+)
+
+```
+
+## Compare results with different priors
+
+```{r eval=FALSE}
+fit_wishart <- MA_NB_tri(data = data_ADNEXCA125,
+                 tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                 prior_type = "wishart",
+                 t = 0.1,
+                 burnin = 10000,
+                 return_vars = c("NB", "RU", "probuseful", "sens", "spec", "pooledprev")
+                 )
+```
+
+```{r message=FALSE, echo=FALSE}
+#| cache: true
+#| class: output
+fit_wishart <- MA_NB_tri(data = data_ADNEXCA125,
+                 tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                 prior_type = "wishart",
+                 t = 0.1,
+                 return_vars = c("NB", "RU", "probuseful", "sens", "spec", "pooledprev")
+                 )
+```
+
+```{r eval=FALSE}
+traceplot(fit_wishart$samples[, c("pooledsens","pooledprev","pooledspec","pooledNB", "pooledNB_TA", "pooledRU")])
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+traceplot(fit_wishart$samples[, c("pooledsens","pooledprev","pooledspec","pooledNB", "pooledNB_TA", "pooledRU")])
+```
+
+```{r eval=FALSE}
+summarize_tri_ma(
+  fit_wishart,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "RU", "probuseful", "sens", "spec"),
+  per_study_metrics = c("NB", "RU", "sens", "spec"),
+  return_known = FALSE,
+  include_per_study = FALSE)
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+summarize_tri_ma(
+  fit_wishart,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "RU", "probuseful", "sens", "spec"),
+  per_study_metrics = c("NB", "RU", "sens", "spec"),
+  return_known = FALSE,
+  include_per_study = FALSE)
+```
+
+```{r}
+plot_forest(
+  fit_wishart$samples,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  prev_col = "Prev",
+  metric = "NB",
+#  center = "Median",
+  xlim = c(-0.1, 0.7),
+  file_png = "forest_nb_wishart.png",
+  file_pdf = "forest_nb_wishart.pdf"
+)
+```
+
+### Get details on the priors used
+
+```{r}
+fit$prior_type
+fit$priors_used_tibble
+```
+
+# Extension: Value of information, EVPI metrics
+
+```{r eval=FALSE}
+voi_res <- MA_NB_tri_voi(
+  data_ADNEXCA125,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  prior_type = "weak",
+  t = 0.1,
+  auto_resample = TRUE
+)
+
+options(scipen = 999)
+glimpse(voi_res$diagnostics)
+```
+
+```{r echo=FALSE}
+#| cache: true
+#| class: output
+voi_res <- MA_NB_tri_voi(
+  data_ADNEXCA125,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  # center_row = 5,
+  # center_label_cols = c("Publication", "Country"),
+  prior_type = "weak",
+  t = 0.1,
+  auto_resample = TRUE
+)
+
+options(scipen = 999)
+glimpse(voi_res$diagnostics)
+```
+
+```{r}
+glimpse(voi_res$metrics)
+```

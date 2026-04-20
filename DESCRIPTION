@@ -1,16 +1,28 @@
 Package: MetaNB
 Type: Package
-Title: What the Package Does (Title Case)
-Version: 0.1.0
-Authors@R: c(
-    person(
-      "Jane", "Doe",
-      email = "jane@example.com",
-      role = c("aut", "cre")
-    )
-  )
-Description: More about what it does (maybe more than one line).
-    Continuation lines should be indented.
-License: What license is it under?
+Title: Meta-Analysis of Net Benefit and Value-of-Information
+Version: 0.0.0.9000
+Authors@R: c(person(given = "Kim (Zhipei)", family = "Wang", role = "aut", 
+                    email = "wzpskye@gmail.com", comment="https://orcid.org/0009-0002-9839-9138"), 
+            person(given = "Junfeng", family = "Wang", role = c("aut", "cre"), 
+                   email="wangjunfeng7@gmail.com", comment="https://orcid.org/0000-0001-5157-5355"),
+            person(given = "Laure", family = "Wynants", role = "aut", 
+                   email="laure.wynants@maastrichtuniversity.nl", comment="https://orcid.org/0000-0002-3037-122X")
+                   )
+Description: Performs Bayesian trivariate random-effects meta-analysis of prevalence, sensitivity, and specificity to estimate net benefit across heterogeneous validation settings (Wynants et al., 2018) <doi:10.1002/sim.7653>. Using Markov chain Monte Carlo sampling via JAGS, it produces estimates of net benefit and its credible and prediction intervals, and the posterior probability a model is clinically useful in a new setting, for given relevant harm-to-benefit ratios. It further estimates value-of-information metrics, including expected value of perfect and partial perfect information, to quantify uncertainty for the decision to implement the model in care across heterogeneous settings.
+License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
+Imports:
+    coda,
+    dplyr,
+    forestploter,
+    mada,
+    magrittr,
+    rjags,
+    rlang,
+    tibble,
+    voi
+RoxygenNote: 7.3.3
+Depends: 
+    R (>= 3.5)

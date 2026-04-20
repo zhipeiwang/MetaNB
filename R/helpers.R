@@ -36,6 +36,8 @@ resolve_col <- function(arg, data, arg_name) {
 }
 
 # recursively drop NULLs from a list
+# Remove empty components so the returned object stays compact and easier to use.
+# Helper for .summarize_for_forestplot() and summarize_tri_ma()
 drop_nulls_recursive <- function(x) {
   # Keep data frames intact
   if (is.data.frame(x)) return(x)
@@ -64,18 +66,25 @@ get_samples <- function(x) {
 
 
 ####################-------------------summarizer for forest plot function----------------------######################
-summarize_for_forestplot <- function(
+.summarize_for_forestplot <- function(
     samples,
     data = NULL,
     label_cols = c("Publication", "Country", "N", "Prev"),
     targets = c("NB", "probuseful"),
     targets_per_study = c("NB"),
-    return_ref = FALSE
+    return_known = FALSE
 ) {
+  # 1. Extract posterior summaries from the fitted samples
+  # 2. Map user-facing metric names (e.g. NB, RU, sens) to JAGS node names
+  # 3. Build per-study summaries when study-level nodes are available
+  # 4. Build pooled / predictive / known-prevalence summaries
+  # 5. Return a structured list used by user-facing summaries and forest plots
+
   study_info <- NULL
   if (!is.null(data)) {
     if (!is.data.frame(data)) stop("`data` must be a data frame.", call. = FALSE)
 
+    # Keep only requested label columns that actually exist in `data`
     missing_labels <- setdiff(label_cols, names(data))
     if (length(missing_labels)) {
       warning("Missing label_cols ignored: ", paste(missing_labels, collapse = ", "))
@@ -84,12 +93,17 @@ summarize_for_forestplot <- function(
     study_info <- data[, label_cols, drop = FALSE]
   }
 
+  # Accept either a fit object or a raw mcmc.list, then compute standard posterior summaries
   samples <- get_samples(samples)
   ss <- summary(samples)
   stats  <- ss$statistics
   quants <- ss$quantiles
 
   # ---- helpers ----
+  # Posterior summaries are built from node names in the MCMC output.
+  # `get_cri()` returns mean/median/95% credible interval for pooled quantities,
+  # `get_pi()` returns the 95% interval for predictive quantities,
+  # and `get_mean_only()` is used for scalar probabilities such as probuseful.
   get_cri <- function(name) {
     if (!name %in% rownames(stats)) return(NULL)
     c(
@@ -114,6 +128,7 @@ summarize_for_forestplot <- function(
   }
 
   # ---- family specification ----
+  # Central mapping from user-facing metric families to JAGS node names.
   family_spec <- list(
     NB = list(
       per_study_base = "NB",
@@ -128,14 +143,14 @@ summarize_for_forestplot <- function(
         treat_all = "NBnew_TA"
       ),
 
-      pooled_ref = list(
-        model     = "pooledNB_ref",
-        treat_all = "pooledNB_TA_ref"
+      pooled_known = list(
+        model     = "pooledNB_known",
+        treat_all = "pooledNB_TA_known"
       ),
 
-      pred_ref = list(
-        model     = "NBnew_ref",
-        treat_all = "NBnew_TA_ref"
+      pred_known = list(
+        model     = "NBnew_known",
+        treat_all = "NBnew_TA_known"
       )
     ),
 
@@ -143,31 +158,31 @@ summarize_for_forestplot <- function(
       per_study_base = "RU",
       pooled = list(model = "pooledRU"),
       predictive = list(model = "RUnew"),
-      pooled_ref = list(model = "pooledRU_ref"),
-      pred_ref = list(model = "RUnew_ref")
+      pooled_known = list(model = "pooledRU_known"),
+      pred_known = list(model = "RUnew_known")
     ),
 
     probuseful = list(
       per_study_base = NULL,
       pooled = list(model = "probuseful"),
       predictive = NULL,
-      pooled_ref = list(model = "probuseful_ref"),
-      pred_ref = NULL
+      pooled_known = list(model = "probuseful_known"),
+      pred_known = NULL
     ),
     sens = list(
       per_study_base = "sens",
       pooled = list(model = "pooledsens"),
       predictive = list(model = "sensnew"),
-      pooled_ref = NULL,
-      pred_ref = NULL
+      pooled_known = NULL,
+      pred_known = NULL
     ),
 
     spec = list(
       per_study_base = "spec",
       pooled = list(model = "pooledspec"),
       predictive = list(model = "specnew"),
-      pooled_ref = NULL,
-      pred_ref = NULL
+      pooled_known = NULL,
+      pred_known = NULL
     )
 
   )
@@ -177,7 +192,7 @@ summarize_for_forestplot <- function(
   for (tar in targets) {
 
     # -------------------------------
-    # CASE 1: family target (NB / RU / probuseful)
+    # CASE 1: family target (NB / RU / probuseful / sens / spec)
     # -------------------------------
     if (tar %in% names(family_spec)) {
 
@@ -187,6 +202,7 @@ summarize_for_forestplot <- function(
       per_study <- NULL
       if (!is.null(metric_def$per_study_base) && tar %in% targets_per_study) {
 
+        # Per-study nodes are stored in the MCMC output as e.g. NB[1], NB[2], ...
         pat  <- paste0("^", metric_def$per_study_base, "\\[\\d+\\]$")
         rows <- grep(pat, rownames(stats), value = TRUE)
 
@@ -195,6 +211,8 @@ summarize_for_forestplot <- function(
             stop("data required for per-study summaries of ", tar)
           }
 
+          # Parse study indices from the node names and check that they align
+          # exactly with the rows of `data`. This prevents accidental relabeling.
           idx <- as.integer(sub(paste0("^", metric_def$per_study_base, "\\[(\\d+)\\]$"),
                                 "\\1", rows))
           ord <- order(idx)
@@ -273,44 +291,44 @@ summarize_for_forestplot <- function(
         if (length(predictive) == 0) predictive <- NULL
       }
 
-      # ---- pooled_ref (CrI) ----
-      pooled_ref <- NULL
-      if (return_ref && !is.null(metric_def$pooled_ref)) {
-        pooled_ref <- list()
-        for (k in names(metric_def$pooled_ref)) {
-          pooled_ref[[k]] <- get_cri(metric_def$pooled_ref[[k]])
+      # ---- pooled_known (CrI) ----
+      pooled_known <- NULL
+      if (return_known && !is.null(metric_def$pooled_known)) {
+        pooled_known <- list()
+        for (k in names(metric_def$pooled_known)) {
+          pooled_known[[k]] <- get_cri(metric_def$pooled_known[[k]])
         }
-        pooled_ref <- pooled_ref[!sapply(pooled_ref, is.null)]
-        if (length(pooled_ref) == 0) pooled_ref <- NULL
+        pooled_known <- pooled_known[!sapply(pooled_known, is.null)]
+        if (length(pooled_known) == 0) pooled_known <- NULL
       }
 
-      # ---- pred_ref (PI or mean-only) ----
-      pred_ref <- NULL
-      if (return_ref && !is.null(metric_def$pred_ref)) {
-        pred_ref <- list()
-        for (k in names(metric_def$pred_ref)) {
-          pred_ref[[k]] <- get_pi(metric_def$pred_ref[[k]])
+      # ---- pred_known (PI or mean-only) ----
+      pred_known <- NULL
+      if (return_known && !is.null(metric_def$pred_known)) {
+        pred_known <- list()
+        for (k in names(metric_def$pred_known)) {
+          pred_known[[k]] <- get_pi(metric_def$pred_known[[k]])
         }
-        pred_ref <- pred_ref[!sapply(pred_ref, is.null)]
-        if (length(pred_ref) == 0) pred_ref <- NULL
+        pred_known <- pred_known[!sapply(pred_known, is.null)]
+        if (length(pred_known) == 0) pred_known <- NULL
       }
 
       # ---- probuseful special case (mean only) ----
       if (tar == "probuseful") {
         pooled <- list(model = get_mean_only("probuseful"))
-        if (return_ref) {
-          pooled_ref <- list(model = get_mean_only("probuseful_ref"))
+        if (return_known) {
+          pooled_known <- list(model = get_mean_only("probuseful_known"))
         }
         predictive <- NULL
-        pred_ref   <- NULL
+        pred_known   <- NULL
       }
 
       out[[tar]] <- list(
         per_study  = per_study,
         pooled     = pooled,
         predictive = predictive,
-        pooled_ref = pooled_ref,
-        pred_ref   = pred_ref
+        pooled_known = pooled_known,
+        pred_known   = pred_known
       )
 
     } else {
@@ -318,6 +336,8 @@ summarize_for_forestplot <- function(
       # -------------------------------
       # CASE 2: atomic variable name
       # -------------------------------
+      # Atomic targets are interpreted as direct JAGS node names rather than
+      # metric families. They are returned as scalar summaries when available.
       scalar <- NULL
       if (tar %in% rownames(stats)) {
         if (tar %in% rownames(quants)) {
@@ -332,6 +352,7 @@ summarize_for_forestplot <- function(
   }
 
   # ---- drop NULLs recursively ----
+  # Remove empty components so the returned object stays compact and easier to use.
   drop_nulls_recursive(out)
 
 
@@ -339,22 +360,58 @@ summarize_for_forestplot <- function(
 
 
 ####################------------------- user-facing summarizer ----------------------######################
-summarize_for_users <- function(
+
+#' Summarize posterior samples from trivariate meta-analysis
+#'
+#' @description
+#' Summarizes posterior samples from a Bayesian trivariate meta-analysis fit.
+#' The function extracts pooled, predictive, and optionally per-study summaries
+#' for selected metrics, and returns them in a structured named list.
+#'
+#' @param samples A fitted object returned by [MA_NB_tri()] or a
+#'   `coda::mcmc.list` of posterior samples.
+#' @param data Optional data frame containing study-level information used for
+#'   per-study summaries.
+#' @param label_cols Character vector giving the columns in `data` to retain in
+#'   per-study output.
+#' @param metrics Character vector of metrics to summarize. Defaults to
+#'   `c("NB", "RU", "probuseful")`.
+#' @param per_study_metrics Character vector of metrics for which per-study
+#'   summaries should be returned when `include_per_study = TRUE`.
+#' @param return_known Logical; whether to include summaries based on the known
+#'   prevalence setting, if available in the fitted object.
+#' @param include_per_study Logical; whether to include per-study summaries.
+#'
+#' @returns
+#' A named list containing summaries for the requested metrics. Depending on the
+#' metric, the list may include per-study summaries, pooled summaries,
+#' predictive summaries, and summaries for the known-prevalence setting.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' fit <- MA_NB_tri(data, tp = tp, tn = tn,
+#'                  n_event = n_event, n_nonevent = n_nonevent,
+#'                  t = 0.1, prior_type = "weak", seed = 123)
+#' summary <- summarize_tri_ma(fit)
+#' }
+summarize_tri_ma <- function(
     samples,
     data = NULL,
     label_cols = c("Publication", "Country", "N", "Prev"),
     metrics = c("NB", "RU", "probuseful"),
     per_study_metrics = c("NB", "RU"),
-    return_ref = FALSE,
+    return_known = FALSE,
     include_per_study = TRUE
 ) {
-  core <- summarize_for_forestplot(
+  core <- .summarize_for_forestplot(
     samples = get_samples(samples),
     data = data,
     label_cols = label_cols,
     targets = metrics,
     targets_per_study = if (include_per_study) per_study_metrics else character(0),
-    return_ref = return_ref
+    return_known = return_known
   )
 
   out <- list()
@@ -367,8 +424,8 @@ summarize_for_users <- function(
       per_study  = if (include_per_study) obj$per_study else NULL,
       pooled     = obj$pooled,        # named vectors inside
       predictive = obj$predictive,    # named vectors inside
-      pooled_ref = if (return_ref) obj$pooled_ref else NULL,
-      pred_ref   = if (return_ref) obj$pred_ref else NULL
+      pooled_known = if (return_known) obj$pooled_known else NULL,
+      pred_known   = if (return_known) obj$pred_known else NULL
     ))
   }
 
@@ -381,14 +438,14 @@ summarize_for_users <- function(
       value <- unname(pu$pooled$model["Mean"])
     }
 
-    value_ref <- NULL
-    if (return_ref && !is.null(pu$pooled_ref$model) && "Mean" %in% names(pu$pooled_ref$model)) {
-      value_ref <- unname(pu$pooled_ref$model["Mean"])
+    value_known <- NULL
+    if (return_known && !is.null(pu$pooled_known$model) && "Mean" %in% names(pu$pooled_known$model)) {
+      value_known <- unname(pu$pooled_known$model["Mean"])
     }
 
     out$probuseful <- drop_nulls_recursive(list(
       value = value,
-      value_ref = value_ref
+      value_known = value_known
     ))
   }
 
@@ -401,7 +458,451 @@ summarize_for_users <- function(
   drop_nulls_recursive(out)
 }
 
+####################------------------- helpers for forest plotter ----------------------######################
+# fallback CI for sensitivity and specificity based on Wilson’s method via mada::madad()
+compute_sens_spec_ci_mada <- function(tp, tn, n_event, n_nonevent) {
+  out <- mada::madad(
+    TP = tp,
+    FN = n_event - tp,
+    FP = n_nonevent - tn,
+    TN = tn
+  )
+  list(
+    sens_low = out$sens$sens.ci[, 1],
+    sens_high = out$sens$sens.ci[, 2],
+    spec_low = out$spec$spec.ci[, 1],
+    spec_high = out$spec$spec.ci[, 2]
+  )
+}
 
+# analytical solution for confidence interval of NB
+compute_nb_ci_delta <- function(tp, tn, n_event, n_nonevent, t,
+                                conf.level = 0.95) {
+  n <- n_event + n_nonevent
+
+  prev_hat <- n_event / n
+  sens_hat <- tp / n_event
+  spec_hat <- tn / n_nonevent
+
+  nb_hat <- prev_hat * sens_hat -
+    (1 - prev_hat) * (1 - spec_hat) * t / (1 - t)
+
+  var_hat <- (1 / n) * (
+    prev_hat * sens_hat * (1 - sens_hat) +
+      (t^2 / (1 - t)^2) * (1 - prev_hat) * spec_hat * (1 - spec_hat) +
+      prev_hat * (1 - prev_hat) *
+      (sens_hat + t * (1 - spec_hat) / (1 - t))^2
+  )
+
+  se_hat <- sqrt(var_hat)
+  z <- stats::qnorm(1 - (1 - conf.level) / 2)
+
+  tibble::tibble(
+    est = nb_hat,
+    se = se_hat,
+    var = var_hat,
+    low = nb_hat - z * se_hat,
+    high = nb_hat + z * se_hat
+  )
+}
+
+# a helper that decides which point estimate and interval to display for each study in the forest plot, based on user-specified columns and fallback rules
+build_per_study_display <- function(
+    metric,
+    per,
+    data,
+    center = c("Median", "Mean"),
+    t = NULL,
+
+    reported_est_col = NULL,
+    reported_low_col = NULL,
+    reported_high_col = NULL,
+
+    interval_fallback = c("none", "frequentist", "analytic", "model")
+) {
+  center <- match.arg(center)
+  interval_fallback <- match.arg(interval_fallback)
+
+  n <- nrow(per)
+
+  display_est  <- per[[center]]
+  display_low  <- per$Low
+  display_high <- per$High
+
+  point_source <- rep("model", n)
+  interval_source <- rep("model", n)
+
+  ## ---- 1. point estimates ----
+
+  # reported point estimate has priority
+  if (!is.null(reported_est_col) && reported_est_col %in% names(data)) {
+    rep_est <- suppressWarnings(as.numeric(data[[reported_est_col]]))
+    has_rep_est <- !is.na(rep_est)
+
+    # for sens/spec, convert percentages to proportions if needed
+    if (metric %in% c("sens", "spec") && any(rep_est > 1, na.rm = TRUE)) {
+      rep_est <- rep_est / 100
+    }
+
+    display_est[has_rep_est] <- rep_est[has_rep_est]
+    point_source[has_rep_est] <- "reported"
+  }
+
+  # observed fallback for sens/spec
+  if (metric %in% c("sens", "spec") &&
+      all(c("tp", "tn", "n_event", "n_nonevent") %in% names(data))) {
+    obs_est <- if (metric == "sens") data$tp / data$n_event else data$tn / data$n_nonevent
+    use_obs <- point_source != "reported" & !is.na(obs_est)
+
+    display_est[use_obs] <- obs_est[use_obs]
+    point_source[use_obs] <- "observed"
+  }
+
+  # observed fallback for NB
+  if (metric == "NB" &&
+      all(c("tp", "tn", "n_event", "n_nonevent") %in% names(data))) {
+    if (is.null(t)) {
+      stop("`t` must be supplied when building per-study NB from observed study data.",
+           call. = FALSE)
+    }
+
+    nb_obs <- compute_nb_ci_delta(
+      tp = data$tp,
+      tn = data$tn,
+      n_event = data$n_event,
+      n_nonevent = data$n_nonevent,
+      t = t
+    )
+
+    use_obs <- point_source != "reported" & !is.na(nb_obs$est)
+    display_est[use_obs] <- nb_obs$est[use_obs]
+    point_source[use_obs] <- "observed"
+  }
+
+  # RU stays model-based unless user reported values exist
+  # no extra block needed
+
+  ## ---- 2. reported intervals ----
+
+  has_rep_ci <- rep(FALSE, n)
+
+  if (!is.null(reported_low_col) && !is.null(reported_high_col) &&
+      reported_low_col %in% names(data) && reported_high_col %in% names(data)) {
+
+    rep_low  <- suppressWarnings(as.numeric(data[[reported_low_col]]))
+    rep_high <- suppressWarnings(as.numeric(data[[reported_high_col]]))
+
+    # for sens/spec, convert percentages to proportions if needed
+    if (metric %in% c("sens", "spec")) {
+      if (any(rep_low > 1, na.rm = TRUE))  rep_low  <- rep_low / 100
+      if (any(rep_high > 1, na.rm = TRUE)) rep_high <- rep_high / 100
+    }
+
+    has_rep_ci <- !is.na(rep_low) & !is.na(rep_high)
+
+    display_low[has_rep_ci] <- rep_low[has_rep_ci]
+    display_high[has_rep_ci] <- rep_high[has_rep_ci]
+    interval_source[has_rep_ci] <- "reported"
+  }
+
+  ## ---- 3. fallback intervals for rows with missing reported CI ----
+
+  need_ci <- !has_rep_ci
+
+  if (any(need_ci) && interval_fallback != "none") {
+
+    # sens/spec frequentist fallback via mada
+    if (metric %in% c("sens", "spec") && interval_fallback == "frequentist") {
+      if (all(c("tp", "tn", "n_event", "n_nonevent") %in% names(data))) {
+        ci <- compute_sens_spec_ci_mada(
+          tp = data$tp,
+          tn = data$tn,
+          n_event = data$n_event,
+          n_nonevent = data$n_nonevent
+        )
+
+        if (metric == "sens") {
+          display_low[need_ci]  <- ci$sens_low[need_ci]
+          display_high[need_ci] <- ci$sens_high[need_ci]
+        } else {
+          display_low[need_ci]  <- ci$spec_low[need_ci]
+          display_high[need_ci] <- ci$spec_high[need_ci]
+        }
+
+        interval_source[need_ci] <- "frequentist"
+      }
+    }
+
+    # NB analytical fallback
+    if (metric == "NB" && interval_fallback == "analytic") {
+      if (is.null(t)) {
+        stop("`t` must be supplied when using analytical CI fallback for NB.",
+             call. = FALSE)
+      }
+
+      if (all(c("tp", "tn", "n_event", "n_nonevent") %in% names(data))) {
+        nb_ci <- compute_nb_ci_delta(
+          tp = data$tp,
+          tn = data$tn,
+          n_event = data$n_event,
+          n_nonevent = data$n_nonevent,
+          t = t
+        )
+
+        display_low[need_ci]  <- nb_ci$low[need_ci]
+        display_high[need_ci] <- nb_ci$high[need_ci]
+        interval_source[need_ci] <- "analytic"
+      }
+    }
+
+    # model-based fallback
+    if (interval_fallback == "model") {
+      display_low[need_ci]  <- per$Low[need_ci]
+      display_high[need_ci] <- per$High[need_ci]
+      interval_source[need_ci] <- "model"
+    }
+  }
+
+  tibble::tibble(
+    display_est = display_est,
+    display_low = display_low,
+    display_high = display_high,
+    point_source = point_source,
+    interval_source = interval_source
+  )
+}
+
+
+
+# choose interval column label for the per-study display column
+infer_interval_label <- function(metric, interval_source) {
+  # RU is always CrI in current methodology
+  if (identical(metric, "RU")) {
+    return("95% CrI")
+  }
+
+  # keep only non-missing unique values
+  src <- unique(stats::na.omit(interval_source))
+
+  # all displayed study-row intervals are model-based
+  if (length(src) > 0 && all(src == "model")) {
+    return("95% CrI")
+  }
+
+  # otherwise default to CI
+  "95% CI"
+}
+
+
+# print short messages explaining fallback sources actually used
+emit_forest_messages <- function(metric, point_source, interval_source,
+                                 interval_fallback, mark_imputed = FALSE) {
+
+  # keep non-missing row-level sources
+  point_src <- point_source[!is.na(point_source)]
+  int_src   <- interval_source[!is.na(interval_source)]
+
+  # non-reported sources actually used
+  point_nonrep <- unique(point_src[point_src != "reported"])
+  int_nonrep   <- unique(int_src[int_src != "reported"])
+
+  # counts
+  n_point_total  <- length(point_src)
+  n_point_nonrep <- sum(point_src != "reported")
+
+  n_int_total  <- length(int_src)
+  n_int_nonrep <- sum(int_src != "reported")
+
+  # choose lead-in
+  point_leadin <- if (n_point_nonrep == n_point_total) "All" else "Some"
+  int_leadin   <- if (n_int_nonrep == n_int_total) "All" else "Some"
+
+  # ---- point estimate message ----
+  if (length(point_nonrep) > 0) {
+
+    point_text <- NULL
+
+    if (setequal(point_nonrep, "observed")) {
+      point_text <- "study-level observed or calculated values"
+    } else if (setequal(point_nonrep, "model")) {
+      point_text <- "Bayesian trivariate model-based values"
+    } else if (setequal(point_nonrep, c("observed", "model"))) {
+      point_text <- paste(
+        "study-level observed or calculated values,",
+        "or Bayesian trivariate model-based values"
+      )
+    }
+
+    if (!is.null(point_text)) {
+      if (isTRUE(mark_imputed)) {
+        message("\u2020 indicates point estimates replaced by ", point_text,
+                " when reported estimates were unavailable.")
+      } else {
+        message(point_leadin, " point estimates were replaced by ", point_text,
+                " because reported estimates were unavailable.")
+      }
+    }
+  }
+
+  # ---- interval message ----
+  if (length(int_nonrep) > 0) {
+
+    interval_text <- NULL
+
+    if (setequal(int_nonrep, "frequentist")) {
+      interval_text <- "confidence interval fallback based on Wilson's method"
+    } else if (setequal(int_nonrep, "analytic")) {
+      interval_text <- "analytical confidence interval fallback"
+    } else if (setequal(int_nonrep, "model")) {
+      interval_text <- "model-based credible interval fallback from the Bayesian trivariate meta-analysis"
+    } else {
+      interval_text <- "fallback intervals"
+    }
+
+    if (isTRUE(mark_imputed)) {
+      message("* indicates ", interval_text,
+              " when reported study intervals were unavailable.")
+    } else {
+      message(int_leadin, " intervals were replaced by ", interval_text,
+              " because reported study intervals were unavailable.")
+    }
+  }
+}
+
+
+# helper for reproducibility by building inits
+resolve_jags_inits <- function(inits = NULL,
+                               n.chains,
+                               seed = NULL,
+                               rng_name = "base::Wichmann-Hill") {
+
+  valid_rng <- c(
+    "base::Wichmann-Hill",
+    "base::Marsaglia-Multicarry",
+    "base::Super-Duper",
+    "base::Mersenne-Twister"
+  )
+
+  if (!is.character(rng_name) || length(rng_name) != 1 || !rng_name %in% valid_rng) {
+    stop(
+      "`rng_name` must be one of: ",
+      paste(valid_rng, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (!is.numeric(n.chains) || length(n.chains) != 1 || n.chains < 1) {
+    stop("`n.chains` must be a positive integer.", call. = FALSE)
+  }
+  n.chains <- as.integer(n.chains)
+
+  if (!is.null(seed)) {
+    if (!is.numeric(seed) || length(seed) != 1 || is.na(seed)) {
+      stop("`seed` must be a single non-missing numeric value.", call. = FALSE)
+    }
+    seed <- as.integer(seed)
+  }
+
+  # ---------- case 1: no inits supplied ----------
+  if (is.null(inits)) {
+    if (is.null(seed)) {
+      return(NULL)
+    }
+
+    # reproducible per-chain RNG settings
+    out <- vector("list", n.chains)
+    for (k in seq_len(n.chains)) {
+      out[[k]] <- list(
+        .RNG.name = rng_name,
+        .RNG.seed = seed + (k - 1L)
+      )
+    }
+    return(out)
+  }
+
+  # ---------- validate inits ----------
+  if (!is.list(inits) || length(inits) != n.chains) {
+    stop(
+      "`inits` must be a list of length `n.chains` (", n.chains, "), ",
+      "with one sub-list per chain.",
+      call. = FALSE
+    )
+  }
+
+  if (!all(vapply(inits, is.list, logical(1)))) {
+    stop("Each element of `inits` must itself be a list.", call. = FALSE)
+  }
+
+  out <- inits
+
+  has_rng_name <- vapply(out, function(x) ".RNG.name" %in% names(x), logical(1))
+  has_rng_seed <- vapply(out, function(x) ".RNG.seed" %in% names(x), logical(1))
+  has_full_rng <- has_rng_name & has_rng_seed
+
+  # ---------- case 2: inits supplied, no seed ----------
+  if (is.null(seed)) {
+    if (!all(has_full_rng)) {
+      warning(
+        "Some chains in `inits` do not contain both `.RNG.name` and `.RNG.seed`. ",
+        "Results may not be exactly reproducible.",
+        call. = FALSE
+      )
+    }
+    return(out)
+  }
+
+  # ---------- case 3: inits supplied, seed supplied ----------
+  # Fill only missing RNG fields; never overwrite user-supplied parameter initials.
+  # Also never overwrite user-supplied RNG fields.
+  all_full_before <- all(has_full_rng)
+
+  for (k in seq_len(n.chains)) {
+    if (!has_rng_name[k]) {
+      out[[k]]$.RNG.name <- rng_name
+    }
+    if (!has_rng_seed[k]) {
+      out[[k]]$.RNG.seed <- seed + (k - 1L)
+    }
+  }
+
+  if (all_full_before) {
+    message(
+      "`seed` ignored because `.RNG.name` and `.RNG.seed` were already supplied ",
+      "in `inits` for all chains."
+    )
+  } else {
+    message(
+      "Filled missing JAGS RNG settings in `inits` using `seed = ", seed, "`."
+    )
+  }
+
+  out
+}
+
+# extract per-chain JAGS RNG metadata from resolved init lists
+extract_rng_meta <- function(final_inits) {
+  get_rng_name <- function(x) {
+    if (".RNG.name" %in% names(x)) x$.RNG.name else NA_character_
+  }
+
+  get_rng_seed <- function(x) {
+    if (".RNG.seed" %in% names(x)) as.integer(x$.RNG.seed) else NA_integer_
+  }
+
+  if (is.null(final_inits)) {
+    return(list(
+      rng_name_per_chain = NULL,
+      rng_seed_per_chain = NULL
+    ))
+  }
+
+  list(
+    rng_name_per_chain = vapply(final_inits, get_rng_name, character(1)),
+    rng_seed_per_chain = vapply(final_inits, get_rng_seed, integer(1))
+  )
+}
+
+####################------------------- helpers for MA_NB_tri_voi.R ----------------------######################
 # convert mcmc.list to tibble of draws, a helper for compute_voi_metrics()
 mcmc_list_to_draws <- function(samples) {
   if (!inherits(samples, "mcmc.list")) {
@@ -429,7 +930,13 @@ calc_sigma <- function(df) {
     for (j in (i + 1):m) {
       d <- df[[i]] - df[[j]]
       se <- stats::sd(d) / sqrt(n)
-      out[idx] <- abs(mean(d)) / se
+
+      if (is.na(se) || se == 0) {
+        out[idx] <- Inf
+      } else {
+        out[idx] <- abs(mean(d)) / se
+      }
+
       idx <- idx + 1
     }
   }
