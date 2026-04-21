@@ -169,6 +169,8 @@ compute_voi_metrics <- function(x,
 
       tibble::tibble(
         center_row = cr,
+        NB_model_mean = mean(NBc),
+        NB_TA_mean = mean(TAc),
         NB_center_currentinfo = NB_center_currentinfo,
         NB_center_perfectinfo = NB_center_perfectinfo,
         EVPI_center_perfectinfo = EVPI_center,
