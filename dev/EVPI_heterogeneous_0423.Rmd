@@ -1,0 +1,601 @@
+---
+title: "EVPI_heterogeneous"
+author: "Kim (Zhipei) Wang"
+date: "2026-04-20"
+output: html_document
+---
+```{r}
+library(dplyr)
+remotes::install_github("zhipeiwang/MetaNB")
+library(MetaNB)
+library(ggplot2)
+library(coda)
+library(patchwork)
+```
+
+# EVPI metrics
+# EVPI calculations using trivariate meta-analysis
+```{r}
+voi_res <- MA_NB_tri_voi(
+  data_ADNEXCA125,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  center_rows = 1:37,
+  center_label_cols = c("Publication", "Country"),
+  prior_type = "weak",
+  t = 0.1,
+  seed = 123,
+  sample_by = 1000,
+  auto_resample = FALSE,
+  return_draws = TRUE
+)
+options(scipen = 999)
+```
+
+```{r}
+voi_res$diagnostics
+```
+
+```{r}
+voi_res$center_metrics
+```
+
+```{r}
+voi_res$metrics
+```
+
+### Meta-analysis results for the IOTA-ADNEX model
+```{r}
+MA_NB_tri_res <- MA_NB_tri(data = data_ADNEXCA125, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+                             prior_type = "weak", t = 0.1, seed = 123,
+                             return_vars = c("NB", "probuseful", "NBnew", "NBnew_TA", "pooledprev", "pooledsens","pooledspec","pooledNB", "pooledNB_TA"),
+                             return_known = FALSE)
+
+summary <- summarize_tri_ma(
+  MA_NB_tri_res,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metrics = c("NB", "probuseful"),
+  per_study_metrics = c("NB", "RU"),
+  return_known = FALSE,
+  include_per_study = FALSE)
+summary
+```
+
+
+```{r}
+plot_forest(
+  MA_NB_tri_res$samples,
+  data = data_ADNEXCA125,
+  label_cols = c("Publication", "Country", "N", "Prev"),
+  metric = "NB",
+#  center = "Median",
+  t = 0.1,
+  mark_imputed = FALSE,
+  xlim = c(-0.1, 0.7),
+  file_png = "forest_nb_paper.png",
+  file_pdf = "forest_nb_paper.pdf"
+)
+```
+
+```{r}
+samples_mtx <- as.matrix(MA_NB_tri_res$samples)
+
+diff_pooled <- samples_mtx[, "pooledNB"] - samples_mtx[, "pooledNB_TA"]
+diff_new <- samples_mtx[, "NBnew"] - samples_mtx[, "NBnew_TA"]
+
+mean(diff_pooled)
+quantile(diff_pooled, c(0.025, 0.975))
+
+quantile(diff_new, c(0.025, 0.975))
+```
+
+## Single-setting EVPI calculations
+```{r}
+# Adapted from .dca_binary in the bayesDCA package (https://github.com/giulianonetto/bayesdca)
+bayesdca_nb <- function(
+    TP, FP, TN, FN,
+    threshold,
+    prior_p1 = 1, prior_p2 = 1,
+    prior_Se1 = 1, prior_Se2 = 1,
+    prior_Sp1 = 1, prior_Sp2 = 1,
+    n_draws = 4000,
+    summary_probs = c(0.025, 0.975)
+) {
+
+  # basic quantities
+  N <- TP + FP + TN + FN
+  d <- TP + FN
+  thresholds <- threshold
+  w_t <- thresholds / (1 - thresholds)
+
+  # posterior parameters
+  post_shape1_p <- d + prior_p1
+  post_shape2_p <- N - d + prior_p2
+
+  post_shape1_Se <- TP + prior_Se1
+  post_shape2_Se <- d - TP + prior_Se2   # = FN + prior_Se2
+
+  post_shape1_Sp <- TN + prior_Sp1
+  post_shape2_Sp <- N - d - TN + prior_Sp2   # = FP + prior_Sp2
+
+  # posterior draws
+  p <- rbeta(n_draws, shape1 = post_shape1_p, shape2 = post_shape2_p)
+  se <- rbeta(n_draws, shape1 = post_shape1_Se, shape2 = post_shape2_Se)
+  sp <- rbeta(n_draws, shape1 = post_shape1_Sp, shape2 = post_shape2_Sp)
+
+  # net benefit draws
+  model <- se * p - w_t * (1 - sp) * (1 - p)
+  treat_all <- p - (1 - p) * w_t
+  treat_none <- rep(0, n_draws)
+
+  # summaries
+  summarize_draws <- function(x, probs = summary_probs) {
+    c(
+      mean = mean(x),
+      median = median(x),
+      lower = unname(quantile(x, probs[1])),
+      upper = unname(quantile(x, probs[2]))
+    )
+  }
+
+  means <- c(
+    treat_none = mean(treat_none),
+    model = mean(model),
+    treat_all = mean(treat_all)
+  )
+
+  winner_strategy <- names(means)[which.max(means)]
+
+  # EVPI
+  enb_current <- max(means)
+
+  enb_perfect <- mean(
+    pmax(treat_none, treat_all, model)
+  )
+
+  EVPI <- enb_perfect - enb_current
+
+  list(
+    inputs = list(
+      TP = TP, FP = FP, TN = TN, FN = FN,
+      N = N, d = d, threshold = threshold
+    ),
+    parameters = list(
+      prevalence = c(shape1 = post_shape1_p, shape2 = post_shape2_p),
+      sensitivity = c(shape1 = post_shape1_Se, shape2 = post_shape2_Se),
+      specificity = c(shape1 = post_shape1_Sp, shape2 = post_shape2_Sp)
+    ),
+    draws = list(
+      p = p,
+      se = se,
+      sp = sp,
+      model = model,
+      treat_all = treat_all,
+      treat_none = treat_none
+    ),
+    summary = list(
+      prevalence = summarize_draws(p),
+      sensitivity = summarize_draws(se),
+      specificity = summarize_draws(sp),
+      model = summarize_draws(model),
+      treat_all = summarize_draws(treat_all),
+      treat_none = summarize_draws(treat_none),
+      winner_strategy = winner_strategy,
+      EVPI = EVPI,
+      enb_current = enb_current,
+      enb_perfect = enb_perfect
+    )
+  )
+}
+```
+
+
+```{r}
+# single-setting results
+set.seed(123)
+
+evpi_results <- vector("list", nrow(data_ADNEXCA125))
+
+for (i in seq_len(nrow(data_ADNEXCA125))) {
+
+  fit <- bayesdca_nb(
+    TP = data_ADNEXCA125$tp[i],
+    FP = data_ADNEXCA125$n_nonevent[i] - data_ADNEXCA125$tn[i],
+    TN = data_ADNEXCA125$tn[i],
+    FN = data_ADNEXCA125$n_event[i] - data_ADNEXCA125$tp[i],
+    threshold = 0.1
+  )
+
+  evpi_results[[i]] <- data.frame(
+    center_row = i,
+    Publication = data_ADNEXCA125$Publication[i],
+    Country = data_ADNEXCA125$Country[i],
+    N = data_ADNEXCA125$N[i],
+    Prev = data_ADNEXCA125$Prev[i],
+    method = "single_setting",
+    NB_model_mean      = mean(fit$draws$model),
+    NB_TA_mean         = mean(fit$draws$treat_all),
+    delta_NB = mean(fit$draws$model) - max(mean(fit$draws$treat_all), 0),
+    NB_center_currentinfo = fit$summary$enb_current,
+    NB_center_perfectinfo = fit$summary$enb_perfect,
+    center_winner_strategy = fit$summary$winner_strategy,
+    EVPI_center_perfectinfo = fit$summary$EVPI
+  )
+}
+
+evpi_single_df <- do.call(rbind, evpi_results)
+evpi_single_df
+```
+
+
+## triMA results rearranged for comparison
+```{r}
+# triMA results
+evpi_triMA_df <- voi_res$center_metrics %>%
+  dplyr::left_join(
+    data_ADNEXCA125 %>%
+      dplyr::mutate(center_row = dplyr::row_number()) %>%
+      dplyr::select(center_row, Publication, Country, N, Prev),
+    by = "center_row"
+  ) %>%
+  dplyr::mutate(method = "triMA",
+                delta_NB = NB_model_mean - pmax(NB_TA_mean, 0)
+                ) %>%
+  dplyr::select(
+    center_row, Publication, Country, N, Prev, method,
+    NB_model_mean,
+    NB_TA_mean,
+    delta_NB,
+    NB_center_currentinfo,
+    NB_center_perfectinfo,
+    center_winner_strategy,
+    EVPI_center_perfectinfo
+  ) %>%
+  data.frame()
+```
+
+## results from single-setting and triMA combined
+```{r}
+# combine
+evpi_long <- dplyr::bind_rows(evpi_single_df, evpi_triMA_df)
+
+evpi_wide <- evpi_long %>%
+  dplyr::select(
+    center_row, Publication, Country, N, Prev, method,
+    NB_model_mean,
+    NB_TA_mean,
+    delta_NB,
+    EVPI_center_perfectinfo,
+    center_winner_strategy,
+    NB_center_currentinfo,
+    NB_center_perfectinfo
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = method,
+    values_from = c(
+      NB_model_mean,
+      NB_TA_mean,
+      delta_NB,
+      EVPI_center_perfectinfo,
+      center_winner_strategy,
+      NB_center_currentinfo,
+      NB_center_perfectinfo
+    ),
+    names_glue = "{.value}_{method}"
+  ) %>%
+  dplyr::mutate(
+    EVPI_diff = EVPI_center_perfectinfo_triMA - EVPI_center_perfectinfo_single_setting,
+    EVPI_diff_perc = 100 * EVPI_diff / EVPI_center_perfectinfo_single_setting,
+    winner_same = center_winner_strategy_triMA == center_winner_strategy_single_setting
+  )
+
+evpi_wide$Prev <- as.numeric(sub("%", "", evpi_wide$Prev))
+evpi_wide$Prev <- evpi_wide$Prev / 100
+```
+
+```{r}
+evpi_wide %>%
+  arrange(desc(Prev))
+# Prevalence is high in centers where the winner strategy is treat all
+```
+
+
+```{r}
+evpi_wide %>%
+  arrange(N)
+```
+
+```{r}
+evpi_wide %>%
+  arrange(desc(Prev)) %>%
+  filter(EVPI_diff > 0)
+```
+
+```{r}
+evpi_wide %>%
+  filter(winner_same == FALSE)
+```
+
+```{r}
+p_evpi <- ggplot(evpi_wide, aes(
+  x = EVPI_center_perfectinfo_single_setting,
+  y = EVPI_center_perfectinfo_triMA,
+  color = winner_same,
+  size = N
+)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    # title = "Comparison of center-level EVPI estimates",
+    x = "EVPI single-setting",
+    y = "EVPI trivariate meta-analysis",
+    size = "Sample size"
+  ) +
+  # scale_color_manual(values = c("#56B4E9", "#D55E00"), name = "Winner strategy", labels = c("Treat all", "Model")) +
+  scale_color_manual(
+    values = c("#56B4E9", "#D55E00"),
+    name = "Winner strategy same?",
+    labels = c("No", "Yes")
+  ) +
+  theme_minimal()
+
+p_evpi
+```
+
+
+```{r}
+ggplot(evpi_wide, aes(
+  x = EVPI_center_perfectinfo_single_setting,
+  y = EVPI_center_perfectinfo_triMA,
+  color = winner_same,
+  size = Prev
+)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    # title = "Comparison of center-level EVPI estimates",
+    x = "EVPI single-setting",
+    y = "EVPI trivariate meta-analysis",
+    size = "Prevalence"
+  ) +
+  scale_color_manual(
+    values = c("#56B4E9", "#D55E00"),
+    name = "Winner strategy same?",
+    labels = c("No", "Yes")
+  ) +
+  theme_minimal()
+```
+
+```{r}
+p_nb <- ggplot(evpi_wide, aes(
+  x = NB_model_mean_single_setting,
+  y = NB_model_mean_triMA,
+  color = winner_same,
+  size = N
+)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    # title = "Comparison of center-level NB estimates",
+    x = "NB ADNEX single-setting",
+    y = "NB ADNEX trivariate meta-analysis",
+    size = "Sample size"
+  ) +
+  scale_color_manual(
+    values = c("#56B4E9", "#D55E00"),
+    name = "Winner strategy same?",
+    labels = c("No", "Yes")
+  ) +
+  theme_minimal()
+p_nb
+```
+
+
+```{r}
+p_delta <- ggplot(evpi_wide, aes(
+  x = delta_NB_single_setting,
+  y = delta_NB_triMA,
+  color = winner_same,
+  size = N
+)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    # title = "Comparison of center-level delta NB estimates",
+    x = "Delta NB single-setting",
+    y = "Delta NB trivariate meta-analysis",
+    size = "Sample size"
+  ) +
+  scale_color_manual(
+    values = c("#56B4E9", "#D55E00"),
+    name = "Winner strategy same?",
+    labels = c("No", "Yes")
+  ) +
+  theme_minimal()
+p_delta
+```
+```{r}
+combined_plot <- (p_nb | p_delta | p_evpi) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+combined_plot
+
+ggsave(
+  filename = "comparison_plots.png",
+  plot = combined_plot,
+  width = 20,
+  height = 8,
+  dpi = 300
+)
+
+ggsave(
+  filename = "comparison_plots.pdf",
+  plot = combined_plot,
+  width = 20,
+  height = 8
+)
+```
+
+# only 5 validations
+```{r}
+data_small <- data_ADNEXCA125[c(30, 33, 34, 35, 36), ]
+
+voi_res_small <- MA_NB_tri_voi(
+  data_small,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  center_label_cols = c("Publication", "Country"),
+  prior_type = "weak",
+  t = 0.1,
+  seed = 123,
+  sample_by = 1000,
+  auto_resample = FALSE,
+  return_draws = TRUE
+)
+```
+
+```{r}
+voi_res_small$metrics
+```
+
+
+# Optimal strategy conditional on prevalence
+```{r}
+prev_grid <- sort(unique(c(seq(0.05, 0.9, by = 0.1), 0.9, 0.60, seq(0.55, 0.6, by = 0.01), seq(0.01, 0.05, by = 0.01))))
+
+results_list <- vector("list", length(prev_grid))
+
+for (i in seq_along(prev_grid)) {
+  
+  p0 <- prev_grid[i]
+  
+  fit <- MA_NB_tri(
+    data = data_ADNEXCA125,
+    tp = tp,
+    tn = tn,
+    n_event = n_event,
+    n_nonevent = n_nonevent,
+    prior_type = "weak",
+    t = 0.1,
+    seed = 123,
+    prev_known = p0,
+    return_known = TRUE
+  )
+  
+  sum_res <- summarize_tri_ma(
+    samples = fit,
+    data = data_ADNEXCA125,
+    return_known = TRUE
+  )
+  
+  nb_model <- sum_res$NB$pooled_known$model
+  nb_ta    <- sum_res$NB$pooled_known$treat_all
+  
+  pi_model <- sum_res$NB$pred_known$model
+  pi_ta    <- sum_res$NB$pred_known$treat_all
+  
+  probuseful_known <- sum_res$probuseful$value_known
+  
+  means <- c(
+    treat_none = 0,
+    model = nb_model["Mean"],
+    treat_all = nb_ta["Mean"]
+  )
+  
+  winner <- names(means)[which.max(means)]
+  
+  results_list[[i]] <- data.frame(
+    prev_known = p0,
+    
+    NB_TN_mean = 0,
+    NB_TN_median = 0,
+    
+    NB_model_mean = unname(nb_model["Mean"]),
+    NB_model_median = unname(nb_model["Median"]),
+    NB_model_cri_low = unname(nb_model["Low"]),
+    NB_model_cri_high = unname(nb_model["High"]),
+    NB_model_pi_low = unname(pi_model["Low"]),
+    NB_model_pi_high = unname(pi_model["High"]),
+    
+    NB_TA_mean = unname(nb_ta["Mean"]),
+    NB_TA_median = unname(nb_ta["Median"]),
+    NB_TA_cri_low = unname(nb_ta["Low"]),
+    NB_TA_cri_high = unname(nb_ta["High"]),
+    NB_TA_pi_low = unname(pi_ta["Low"]),
+    NB_TA_pi_high = unname(pi_ta["High"]),
+    
+    probuseful_known = probuseful_known,
+    winner_strategy = winner
+  )
+}
+
+prev_strategy_df <- do.call(rbind, results_list)
+prev_strategy_df
+```
+
+```{r}
+prev_strategy_df %>%
+  dplyr::mutate(
+    winner_prev = dplyr::lag(winner_strategy),
+    switched = winner_strategy != winner_prev
+  ) %>%
+  filter(switched == TRUE)
+```
+
+```{r}
+prev_strategy_df <- prev_strategy_df %>%
+  dplyr::mutate(
+    winner_strategy = sub("\\..*$", "", winner_strategy)
+  ) %>%
+  dplyr::rename(probuseful = probuseful_known)
+
+prev_strategy_df_out <- prev_strategy_df %>%
+  dplyr::mutate(
+    dplyr::across(where(is.numeric), ~ round(.x, 4))
+  ) %>%
+  select(prev_known, NB_TN_mean, NB_model_mean, NB_TA_mean, probuseful, winner_strategy)
+
+library(flextable)
+library(officer)
+
+ft <- flextable(prev_strategy_df_out)
+ft <- autofit(ft)
+
+save_as_docx(
+  "Optimal strategy conditional prevalence" = ft,
+  path = "prev_strategy_table.docx"
+)
+```
+
+```{r}
+MA_NB_tri_res_prev002 <- MA_NB_tri(
+  data = data_ADNEXCA125,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  prior_type = "weak",
+  t = 0.1,
+  seed = 123,
+  prev_known = 0.02,
+  return_known = TRUE
+)
+
+MA_NB_tri_res_prev09 <- MA_NB_tri(
+  data = data_ADNEXCA125,
+  tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
+  prior_type = "weak",
+  t = 0.1,
+  seed = 123,
+  prev_known = 0.9,
+  return_known = TRUE
+)
+```
+```{r}
+mcmc_hist(MA_NB_tri_res_prev002$samples, pars = c("NBnew", "pooledNB"))
+
+```
+
+```{r}
+mcmc_hist(MA_NB_tri_res_prev002$samples, pars = c("NBnew_known", "pooledNB_known"))
+```
+```{r}
+mcmc_hist(MA_NB_tri_res_prev09$samples, pars = c("NBnew_known", "pooledNB_known"))
+```
+
