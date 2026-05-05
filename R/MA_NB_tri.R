@@ -12,14 +12,10 @@
 #' iterative resampling until Monte Carlo precision criteria are met.
 #'
 #' @param data A data frame containing one row per study.
-#' @param tp <[`data-masking`][rlang::args_data_masking]> Column of true
-#'   positives (unquoted name or string).
-#' @param tn <[`data-masking`][rlang::args_data_masking]> Column of true
-#'   negatives (unquoted name or string).
-#' @param n_event <[`data-masking`][rlang::args_data_masking]> Column of
-#'   total events per study.
-#' @param n_nonevent <[`data-masking`][rlang::args_data_masking]> Column of
-#'   total non-events per study.
+#' @param tp Column of true positives (unquoted name or string).
+#' @param tn Column of true negatives (unquoted name or string).
+#' @param n_event Column of total events per study.
+#' @param n_nonevent Column of total non-events per study.
 #' @param prior_type Character string specifying the prior structure.
 #'   \code{"weak"} uses weakly informative priors. \code{"wishart"} uses an inverse-Wishart
 #'   prior. Default \code{"weak"}.
@@ -149,9 +145,9 @@
 #' Wynants L, Riley R, Timmerman D, Van Calster B. Random-effects
 #' meta-analysis of the clinical utility of tests and prediction models.
 #' \emph{Stat Med} 2018;37(12):2034--52.
-#' \doi{10.1002/sim.7653}
 #'
-#'
+#' Jackson C, Heath A (2024). \emph{voi: Value of Information Analysis in R}
+#' \doi{10.32614/CRAN.package.voi}
 #'
 #' @seealso [summarize_tri_ma()], [plot_forest()]
 #'

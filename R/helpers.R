@@ -359,7 +359,7 @@ get_samples <- function(x) {
 #' Extracts and structures posterior summaries from a fitted Bayesian
 #' trivariate meta-analysis. For each requested metric, returns pooled
 #' estimates (posterior mean, median, and 95% credible interval),
-#' predictive summaries for a new center (mean, median, and 95% prediction
+#' predictive summaries for a new center (mean, median, and 95\% prediction
 #' interval), and optionally per-study summaries and summaries at a fixed
 #' known prevalence.
 #'
@@ -423,7 +423,7 @@ get_samples <- function(x) {
 #' # Default summaries
 #' summary <- summarize_tri_ma(fit, data = data,
 #'                         label_cols = c("Publication", "Country"))
-#' summary$NB$pooled$model       # pooled NB: mean, median, 95% CrI
+#' summary$NB$pooled$model       # pooled NB: mean, median, 95\% CrI
 #' summary$NB$predictive$model   # predictive NB for new center
 #' summary$probuseful$value      # P(useful)
 #'
