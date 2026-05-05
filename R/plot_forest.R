@@ -9,60 +9,60 @@
 #' that the model is useful at a new center is also shown.
 #'
 #' Per-study point estimates and intervals are determined by a priority
-#' hierarchy: reported values from \code{data} take precedence, followed by
+#' hierarchy: reported values from `data` take precedence, followed by
 #' observed or analytically derived values, followed by model-based posterior
 #' summaries. Imputed values are flagged with \eqn{\dagger} (point estimates)
-#' and \eqn{*} (intervals) when \code{mark_imputed = TRUE}.
+#' and \eqn{*} (intervals) when `mark_imputed = TRUE`.
 #'
-#' @param samples A \code{coda::mcmc.list} of posterior samples, typically
-#'   \code{fit$samples} from [MA_NB_tri()].
+#' @param samples A `coda::mcmc.list` of posterior samples, typically
+#'   `fit$samples` from [MA_NB_tri()].
 #' @param data A data frame containing study-level data and display labels.
 #'   Must have one row per study in the same order as the fitted model.
-#' @param label_cols Character vector of column names in \code{data} to display
+#' @param label_cols Character vector of column names in `data` to display
 #'   as table columns in the plot.
-#' @param study_label_col Optional column name in \code{data} that receives the
+#' @param study_label_col Optional column name in `data` that receives the
 #'   summary row labels ("Pooled estimate", "Prediction interval", "P(useful)").
-#'   If \code{NULL}, the first entry of \code{label_cols} is used.
-#' @param metric Metric to plot. One of \code{"NB"} (net benefit),
-#'   \code{"RU"} (relative utility), \code{"sens"} (sensitivity), or
-#'   \code{"spec"} (specificity). Default \code{"NB"}.
+#'   If `NULL`, the first entry of `label_cols` is used.
+#' @param metric Metric to plot. One of `"NB"` (net benefit),
+#'   `"RU"` (relative utility), `"sens"` (sensitivity), or
+#'   `"spec"` (specificity). Default `"NB"`.
 #' @param center Posterior summary used as the point estimate per study and for the pooled
-#'   row, and for sorting studies. One of \code{"Mean"} (default) or
-#'   \code{"Median"}.
+#'   row, and for sorting studies. One of `"Mean"` (default) or
+#'   `"Median"`.
 #' @param t Numeric scalar in (0, 1). The decision threshold. Required when
-#'   \code{metric = "NB"} and observed or analytically derived per-study
+#'   `metric = "NB"` and observed or analytically derived per-study
 #'   estimates are needed.
 #' @param xlim Optional numeric vector of length 2 giving x-axis limits. If
-#'   \code{NULL}, limits are derived automatically from the data with padding,
+#'   `NULL`, limits are derived automatically from the data with padding,
 #'   and 0 is always included.
 #' @param xticks Optional numeric vector of x-axis tick positions.
 #' @param plot_col_width Integer. Width in characters of the blank column used
 #'   internally by the package \pkg{forestploter} to render the plot panel. Increase if
-#'   the plot appears cramped. Default \code{50}.
-#' @param reported_est_col Optional column name in \code{data} containing
+#'   the plot appears cramped. Default `50`.
+#' @param reported_est_col Optional column name in `data` containing
 #'   reported per-study point estimates. Takes priority over observed and
 #'   model-based values.
-#' @param reported_low_col Optional column name in \code{data} containing
+#' @param reported_low_col Optional column name in `data` containing
 #'   reported lower interval bounds.
-#' @param reported_high_col Optional column name in \code{data} containing
+#' @param reported_high_col Optional column name in `data` containing
 #'   reported upper interval bounds.
 #' @param interval_fallback Optional character string specifying the fallback
-#'   interval method for studies lacking reported intervals. If \code{NULL},
-#'   defaults are chosen by metric: \code{"frequentist"} (Wilson's method via
-#'   the \code{madad} function in the pacakge \pkg{mada}) for sensitivity and
-#'   specificity, \code{"analytic"} for NB,
-#'   and \code{"model"} (posterior CrI) for RU.
-#' @param mark_imputed Logical. If \code{TRUE}, per-study rows where the
+#'   interval method for studies lacking reported intervals. If `NULL`,
+#'   defaults are chosen by metric: `"frequentist"` (Wilson's method via
+#'   the `madad` function in the pacakge \pkg{mada}) for sensitivity and
+#'   specificity, `"analytic"` for NB,
+#'   and `"model"` (posterior CrI) for RU.
+#' @param mark_imputed Logical. If `TRUE`, per-study rows where the
 #'   displayed point estimate or interval was not taken directly from reported
 #'   values are flagged with \eqn{\dagger} and \eqn{*} respectively.
-#'   Default \code{TRUE}.
+#'   Default `TRUE`.
 #' @param file_png Optional file path. If supplied, the plot is saved as a PNG
 #'   at 300 dpi in addition to being displayed.
 #' @param file_pdf Optional file path. If supplied, the plot is saved as a PDF
 #'   in addition to being displayed.
 #'
 #' @return The \pkg{forestploter} plot object, returned invisibly. The plot is
-#'   also rendered as a side effect. If \code{file_png} or \code{file_pdf} are
+#'   also rendered as a side effect. If `file_png` or `file_pdf` are
 #'   supplied, the plot is additionally saved to those paths.
 #'
 #' @details
@@ -72,8 +72,8 @@
 #' interval row reflects the 95% interval for a hypothetical new center
 #' and is rendered as a horizontal bar with no point estimate.
 #'
-#' Interval column headers are labelled \code{95% CrI} when all displayed
-#' intervals are model-based, and \code{95% CI} otherwise.
+#' Interval column headers are labelled `95% CrI` when all displayed
+#' intervals are model-based, and `95% CI` otherwise.
 #'
 #' @references
 #' Wynants L, Riley R, Timmerman D, Van Calster B. Random-effects

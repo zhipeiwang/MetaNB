@@ -114,8 +114,8 @@ median of the pooled estimate across the observed studies. The prediction
 interval row reflects the 95\% interval for a hypothetical new center
 and is rendered as a horizontal bar with no point estimate.
 
-Interval column headers are labelled \code{95\% CrI} when all displayed
-intervals are model-based, and \code{95\% CI} otherwise.
+Interval column headers are labelled \verb{95\% CrI} when all displayed
+intervals are model-based, and \verb{95\% CI} otherwise.
 }
 \examples{
 \dontrun{

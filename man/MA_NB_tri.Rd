@@ -106,8 +106,7 @@ set each JAGS chain's RNG. Ignored if \code{inits} already contains
 \item{diag_vars}{Character vector of JAGS node names to monitor for
 convergence diagnostics (trace plots). Set to \code{NULL} or
 \code{character(0)} to suppress trace plots. Default:
-\code{c("pooledsens", "pooledprev", "pooledspec", "pooledNB",
-  "pooledNB_TA", "pooledRU")}.}
+\code{c("pooledsens", "pooledprev", "pooledspec", "pooledNB", "pooledNB_TA", "pooledRU")}.}
 
 \item{return_vars}{Character vector of variable families or individual
 JAGS node names to monitor and return. Family names (\code{"NB"},
@@ -177,32 +176,31 @@ output. If \code{NULL} or none of the specified columns exist in
 }
 \value{
 A named list with the following elements:
-\describe{
-\item{\code{samples}}{An \code{mcmc.list} object containing posterior
-draws for all monitored nodes.}
-\item{\code{priors_used}}{A tibble summarizing the prior hyperparameter
-values used after merging defaults with any user overrides.}
-\item{\code{meta}}{A named list of run metadata including threshold
-\code{t}, \code{prev_known}, \code{prior_type}, monitored nodes
+\itemize{
+\item \code{samples}: \code{mcmc.list} object containing posterior
+draws for all monitored nodes.
+\code{ priors_used}: A tibble summarizing the prior hyperparameter
+values used after merging defaults with any user overrides.
+\item \code{meta}: A named list of run metadata including threshold
 (\code{returned}), MCMC settings, actual draws per chain
 (\code{saved_per_chain}), total draws (\code{total_saved}), and
 per-chain RNG information. When \code{compute_EVPI = TRUE}, also
-includes \code{rounds}, \code{stop_reason}.}
-\item{\code{voi_metrics}}{A tibble of VOI metrics including
+includes \code{rounds}, \code{stop_reason}.
+\item \code{voi_metrics}: A tibble of VOI metrics including
 \code{EVPI_cluster_perfectinfo}, \code{EVPI_population_perfectinfo},
 and \code{EVPPI_cluster_perfectprevalenceinfo}. \code{NULL} when
-\code{compute_EVPI = FALSE}.}
-\item{\code{voi_diagnostics}}{A tibble of Monte Carlo precision
+\code{compute_EVPI = FALSE}.
+\item \code{voi_diagnostics}: A tibble of Monte Carlo precision
 diagnostics including sigma values, ESS, and
 \code{needs_more_sampling}. \code{NULL} when
-\code{compute_EVPI = FALSE}.}
-\item{\code{voi_center_metrics}}{A tibble of center-specific EVPI
+\code{compute_EVPI = FALSE}.
+\item \code{voi_center_metrics}: A tibble of center-specific EVPI
 estimates and diagnostics for each row in \code{center_rows}.
 \code{NULL} when \code{center_rows} is \code{NULL} or
-\code{compute_EVPI = FALSE}.}
-\item{\code{voi_center_meta}}{A data frame of human-readable center
+\code{compute_EVPI = FALSE}.
+\item \code{voi_center_meta}: A data frame of human-readable center
 labels corresponding to \code{center_rows}. \code{NULL} when
-\code{center_rows} is \code{NULL} or \code{compute_EVPI = FALSE}.}
+\code{center_rows} is \code{NULL} or \code{compute_EVPI = FALSE}.
 }
 }
 \description{
