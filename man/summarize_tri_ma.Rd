@@ -19,8 +19,8 @@ summarize_tri_ma(
 \code{coda::mcmc.list} of posterior samples directly.}
 
 \item{data}{Optional data frame containing study-level information. Required
-when per-study summaries are requested (i.e. when \code{include_per_study
-  = TRUE} and a metric in \code{per_study_metrics} is requested).}
+when per-study summaries are requested (i.e. when \code{include_per_study = TRUE}
+and a metric in \code{per_study_metrics} is requested).}
 
 \item{label_cols}{Optional character vector of column names in \code{data}
 to retain in per-study output (e.g. study labels, country, sample size).}
@@ -31,8 +31,7 @@ names (e.g. \code{"pooledprev"}, \code{"NBnew_known"}) are both accepted.
 Default: \code{c("NB", "probuseful")}.}
 
 \item{per_study_metrics}{Character vector of metrics for which per-study
-summaries should be returned. Only used when \code{include_per_study =
-  TRUE}. Default: \code{c("NB")}.}
+summaries should be returned. Only used when \code{include_per_study = TRUE}. Default: \code{c("NB")}.}
 
 \item{return_known}{Logical. If \code{TRUE}, also returns summaries
 evaluated at the fixed known prevalence (e.g. \code{pooledNB_known},
@@ -46,29 +45,30 @@ Requires \code{data} to be supplied. Default \code{TRUE}.}
 \value{
 A named list with one element per requested metric. For family
 metrics (\code{"NB"}, \code{"RU"}), each element contains:
-\describe{
-\item{\code{per_study}}{A data frame of per-study posterior summaries
-(mean, median, 95\\% CrI), merged with \code{label_cols} from
-\code{data}. \code{NULL} if \code{include_per_study = FALSE}.}
-\item{\code{pooled}}{Named list of pooled posterior summaries (mean,
-median, 95\\% CrI) for the model and treat-all strategies.}
-\item{\code{predictive}}{Named list of posterior predictive summaries
-(mean, median, 95\\% PI) for a new center for the model and treat-all
-strategies.}
-\item{\code{pooled_known}}{As \code{pooled} but at fixed known
-prevalence. \code{NULL} if \code{return_known = FALSE}.}
-\item{\code{pred_known}}{As \code{predictive} but at fixed known
-prevalence. \code{NULL} if \code{return_known = FALSE}.}
-}
+\itemize{
+\item \code{per_study}: A data frame of per-study posterior summaries
+(mean, median, 95\% CrI), merged with \code{label_cols} from
+\code{data}. \code{NULL} if \code{include_per_study = FALSE}.
+\item \code{pooled}: Named list of pooled posterior summaries (mean,
+median, 95\% CrI) for the model and treat-all strategies.
+\item \code{predictive}: Named list of posterior predictive summaries
+(mean, median, 95\% PI) for a new center for the model and treat-all
+strategies.
+\item \code{pooled_known}: As \code{pooled} but at fixed known
+prevalence. \code{NULL} if \code{return_known = FALSE}.
+\item \code{pred_known}: As \code{predictive} but at fixed known
+prevalence. \code{NULL} if \code{return_known = FALSE}.
+
 For \code{"probuseful"}, a list with \code{value} and
 optionally \code{value_known}. For atomic node names, a list with
-\code{scalar} containing the posterior summary.
+scalar` containing the posterior summary.
+}
 }
 \description{
 Extracts and structures posterior summaries from a fitted Bayesian
 trivariate meta-analysis. For each requested metric, returns pooled
 estimates (posterior mean, median, and 95\% credible interval),
-predictive summaries for a new center (mean, median, and 95\\% prediction
+predictive summaries for a new center (mean, median, and 95\% prediction
 interval), and optionally per-study summaries and summaries at a fixed
 known prevalence.
 }
@@ -88,7 +88,7 @@ fit <- MA_NB_tri(
 # Default summaries
 summary <- summarize_tri_ma(fit, data = data,
                         label_cols = c("Publication", "Country"))
-summary$NB$pooled$model       # pooled NB: mean, median, 95\\% CrI
+summary$NB$pooled$model       # pooled NB: mean, median, 95\% CrI
 summary$NB$predictive$model   # predictive NB for new center
 summary$probuseful$value      # P(useful)
 

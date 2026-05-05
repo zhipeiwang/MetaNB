@@ -97,7 +97,7 @@ supplied, the plot is additionally saved to those paths.
 Produces a forest plot for net benefit (NB), relative utility (RU),
 sensitivity, or specificity from a fitted Bayesian trivariate meta-analysis.
 Per-study point estimates and intervals are displayed alongside the pooled
-posterior estimate and the 95\\% prediction interval for a new center.
+posterior estimate and the 95\% prediction interval for a new center.
 For the forest plot for net benefit, the posterior probability \eqn{P(\text{useful})}
 that the model is useful at a new center is also shown.
 
@@ -111,7 +111,7 @@ and \eqn{*} (intervals) when \code{mark_imputed = TRUE}.
 Studies are sorted in ascending order of the displayed point estimate.
 The pooled row uses a filled diamond and reflects the posterior mean or
 median of the pooled estimate across the observed studies. The prediction
-interval row reflects the 95\\% interval for a hypothetical new center
+interval row reflects the 95\% interval for a hypothetical new center
 and is rendered as a horizontal bar with no point estimate.
 
 Interval column headers are labelled \code{95\% CrI} when all displayed

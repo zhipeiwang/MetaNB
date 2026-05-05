@@ -153,7 +153,7 @@ sigma < \code{sigma_min}. Default \code{2}.}
 \item{ess_min}{Numeric. Minimum acceptable effective sample size for key
 pooled nodes (\code{pooledNB}, \code{pooledNB_TA}, \code{probuseful});
 resampling continues while any ESS < \code{ess_min}. Corresponds to a
-relative Monte Carlo standard error of at most 5\\%. Default \code{400}.}
+relative Monte Carlo standard error of at most 5\%. Default \code{400}.}
 
 \item{compute_evppi_prev}{Logical. If \code{TRUE} and
 \code{compute_EVPI = TRUE}, computes the EVPPI for prevalence using the
