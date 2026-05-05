@@ -32,7 +32,7 @@ MA_NB_tri(
   auto_resample = TRUE,
   max_rounds = 10,
   sample_by = 2000,
-  max_draws = 200000,
+  max_draws = 2e+05,
   sigma_min = 2,
   ess_min = 400,
   compute_evppi_prev = TRUE,
@@ -44,17 +44,13 @@ MA_NB_tri(
 \arguments{
 \item{data}{A data frame containing one row per study.}
 
-\item{tp}{<[`data-masking`][rlang::args_data_masking]> Column of true
-positives (unquoted name or string).}
+\item{tp}{Column of true positives (unquoted name or string).}
 
-\item{tn}{<[`data-masking`][rlang::args_data_masking]> Column of true
-negatives (unquoted name or string).}
+\item{tn}{Column of true negatives (unquoted name or string).}
 
-\item{n_event}{<[`data-masking`][rlang::args_data_masking]> Column of
-total events per study.}
+\item{n_event}{Column of total events per study.}
 
-\item{n_nonevent}{<[`data-masking`][rlang::args_data_masking]> Column of
-total non-events per study.}
+\item{n_nonevent}{Column of total non-events per study.}
 
 \item{prior_type}{Character string specifying the prior structure.
 \code{"weak"} uses weakly informative priors. \code{"wishart"} uses an inverse-Wishart
@@ -111,7 +107,7 @@ set each JAGS chain's RNG. Ignored if \code{inits} already contains
 convergence diagnostics (trace plots). Set to \code{NULL} or
 \code{character(0)} to suppress trace plots. Default:
 \code{c("pooledsens", "pooledprev", "pooledspec", "pooledNB",
-"pooledNB_TA", "pooledRU")}.}
+  "pooledNB_TA", "pooledRU")}.}
 
 \item{return_vars}{Character vector of variable families or individual
 JAGS node names to monitor and return. Family names (\code{"NB"},
@@ -157,7 +153,7 @@ sigma < \code{sigma_min}. Default \code{2}.}
 \item{ess_min}{Numeric. Minimum acceptable effective sample size for key
 pooled nodes (\code{pooledNB}, \code{pooledNB_TA}, \code{probuseful});
 resampling continues while any ESS < \code{ess_min}. Corresponds to a
-relative Monte Carlo standard error of at most 5\%. Default \code{400}.}
+relative Monte Carlo standard error of at most 5\\%. Default \code{400}.}
 
 \item{compute_evppi_prev}{Logical. If \code{TRUE} and
 \code{compute_EVPI = TRUE}, computes the EVPPI for prevalence using the
@@ -182,31 +178,31 @@ output. If \code{NULL} or none of the specified columns exist in
 \value{
 A named list with the following elements:
 \describe{
-  \item{\code{samples}}{An \code{mcmc.list} object containing posterior
-    draws for all monitored nodes.}
-  \item{\code{priors_used}}{A tibble summarizing the prior hyperparameter
-    values used after merging defaults with any user overrides.}
-  \item{\code{meta}}{A named list of run metadata including threshold
-    \code{t}, \code{prev_known}, \code{prior_type}, monitored nodes
-    (\code{returned}), MCMC settings, actual draws per chain
-    (\code{saved_per_chain}), total draws (\code{total_saved}), and
-    per-chain RNG information. When \code{compute_EVPI = TRUE}, also
-    includes \code{rounds}, \code{stop_reason}.}
-  \item{\code{voi_metrics}}{A tibble of VOI metrics including
-    \code{EVPI_cluster_perfectinfo}, \code{EVPI_population_perfectinfo},
-    and \code{EVPPI_cluster_perfectprevalenceinfo}. \code{NULL} when
-    \code{compute_EVPI = FALSE}.}
-  \item{\code{voi_diagnostics}}{A tibble of Monte Carlo precision
-    diagnostics including sigma values, ESS, and
-    \code{needs_more_sampling}. \code{NULL} when
-    \code{compute_EVPI = FALSE}.}
-  \item{\code{voi_center_metrics}}{A tibble of center-specific EVPI
-    estimates and diagnostics for each row in \code{center_rows}.
-    \code{NULL} when \code{center_rows} is \code{NULL} or
-    \code{compute_EVPI = FALSE}.}
-  \item{\code{voi_center_meta}}{A data frame of human-readable center
-    labels corresponding to \code{center_rows}. \code{NULL} when
-    \code{center_rows} is \code{NULL} or \code{compute_EVPI = FALSE}.}
+\item{\code{samples}}{An \code{mcmc.list} object containing posterior
+draws for all monitored nodes.}
+\item{\code{priors_used}}{A tibble summarizing the prior hyperparameter
+values used after merging defaults with any user overrides.}
+\item{\code{meta}}{A named list of run metadata including threshold
+\code{t}, \code{prev_known}, \code{prior_type}, monitored nodes
+(\code{returned}), MCMC settings, actual draws per chain
+(\code{saved_per_chain}), total draws (\code{total_saved}), and
+per-chain RNG information. When \code{compute_EVPI = TRUE}, also
+includes \code{rounds}, \code{stop_reason}.}
+\item{\code{voi_metrics}}{A tibble of VOI metrics including
+\code{EVPI_cluster_perfectinfo}, \code{EVPI_population_perfectinfo},
+and \code{EVPPI_cluster_perfectprevalenceinfo}. \code{NULL} when
+\code{compute_EVPI = FALSE}.}
+\item{\code{voi_diagnostics}}{A tibble of Monte Carlo precision
+diagnostics including sigma values, ESS, and
+\code{needs_more_sampling}. \code{NULL} when
+\code{compute_EVPI = FALSE}.}
+\item{\code{voi_center_metrics}}{A tibble of center-specific EVPI
+estimates and diagnostics for each row in \code{center_rows}.
+\code{NULL} when \code{center_rows} is \code{NULL} or
+\code{compute_EVPI = FALSE}.}
+\item{\code{voi_center_meta}}{A data frame of human-readable center
+labels corresponding to \code{center_rows}. \code{NULL} when
+\code{center_rows} is \code{NULL} or \code{compute_EVPI = FALSE}.}
 }
 }
 \description{
@@ -259,7 +255,10 @@ Wynants L, Riley R, Timmerman D, Van Calster B. Random-effects
 meta-analysis of the clinical utility of tests and prediction models.
 \emph{Stat Med} 2018;37(12):2034--52.
 \doi{10.1002/sim.7653}
+
+Jackson C, Heath A (2024). \emph{voi: Value of Information Analysis in R}
+\doi{10.32614/CRAN.package.voi}
 }
 \seealso{
-[summarize_tri_ma()], [plot_forest()]
+\code{\link[=summarize_tri_ma]{summarize_tri_ma()}}, \code{\link[=plot_forest]{plot_forest()}}
 }

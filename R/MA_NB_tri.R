@@ -145,6 +145,7 @@
 #' Wynants L, Riley R, Timmerman D, Van Calster B. Random-effects
 #' meta-analysis of the clinical utility of tests and prediction models.
 #' \emph{Stat Med} 2018;37(12):2034--52.
+#' \doi{10.1002/sim.7653}
 #'
 #' Jackson C, Heath A (2024). \emph{voi: Value of Information Analysis in R}
 #' \doi{10.32614/CRAN.package.voi}

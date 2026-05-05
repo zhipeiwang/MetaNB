@@ -26,7 +26,7 @@ plot_forest(
 }
 \arguments{
 \item{samples}{A \code{coda::mcmc.list} of posterior samples, typically
-\code{fit$samples} from [MA_NB_tri()].}
+\code{fit$samples} from \code{\link[=MA_NB_tri]{MA_NB_tri()}}.}
 
 \item{data}{A data frame containing study-level data and display labels.
 Must have one row per study in the same order as the fitted model.}
@@ -57,7 +57,7 @@ and 0 is always included.}
 \item{xticks}{Optional numeric vector of x-axis tick positions.}
 
 \item{plot_col_width}{Integer. Width in characters of the blank column used
-internally by \pkg{forestploter} to render the plot panel. Increase if
+internally by the package \pkg{forestploter} to render the plot panel. Increase if
 the plot appears cramped. Default \code{50}.}
 
 \item{reported_low_col}{Optional column name in \code{data} containing
@@ -73,8 +73,9 @@ model-based values.}
 \item{interval_fallback}{Optional character string specifying the fallback
 interval method for studies lacking reported intervals. If \code{NULL},
 defaults are chosen by metric: \code{"frequentist"} (Wilson's method via
-\pkg{mada}) for sensitivity and specificity, \code{"analytic"} (delta
-method) for NB, and \code{"model"} (posterior CrI) for RU.}
+the \code{madad} function in the pacakge \pkg{mada}) for sensitivity and
+specificity, \code{"analytic"} for NB,
+and \code{"model"} (posterior CrI) for RU.}
 
 \item{mark_imputed}{Logical. If \code{TRUE}, per-study rows where the
 displayed point estimate or interval was not taken directly from reported
@@ -89,15 +90,15 @@ in addition to being displayed.}
 }
 \value{
 The \pkg{forestploter} plot object, returned invisibly. The plot is
-  also rendered as a side effect. If \code{file_png} or \code{file_pdf} are
-  supplied, the plot is additionally saved to those paths.
+also rendered as a side effect. If \code{file_png} or \code{file_pdf} are
+supplied, the plot is additionally saved to those paths.
 }
 \description{
 Produces a forest plot for net benefit (NB), relative utility (RU),
 sensitivity, or specificity from a fitted Bayesian trivariate meta-analysis.
 Per-study point estimates and intervals are displayed alongside the pooled
-posterior estimate and the 95% prediction interval for a new center.
-For the forest plot for net benefit, the posterior probability (\eqn{P(\text{useful})})
+posterior estimate and the 95\\% prediction interval for a new center.
+For the forest plot for net benefit, the posterior probability \eqn{P(\text{useful})}
 that the model is useful at a new center is also shown.
 
 Per-study point estimates and intervals are determined by a priority
@@ -110,7 +111,7 @@ and \eqn{*} (intervals) when \code{mark_imputed = TRUE}.
 Studies are sorted in ascending order of the displayed point estimate.
 The pooled row uses a filled diamond and reflects the posterior mean or
 median of the pooled estimate across the observed studies. The prediction
-interval row reflects the 95% interval for a hypothetical new center
+interval row reflects the 95\\% interval for a hypothetical new center
 and is rendered as a horizontal bar with no point estimate.
 
 Interval column headers are labelled \code{95\% CrI} when all displayed
@@ -174,5 +175,5 @@ Doebler P (2025). \emph{mada: Meta-Analysis of Diagnostic Accuracy}.
 \doi{10.32614/CRAN.package.mada}
 }
 \seealso{
-[MA_NB_tri()], [summarize_tri_ma()]
+\code{\link[=MA_NB_tri]{MA_NB_tri()}}, \code{\link[=summarize_tri_ma]{summarize_tri_ma()}}
 }
