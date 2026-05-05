@@ -28,73 +28,238 @@ MA_NB_tri(
     "pooledRU"),
   return_vars = c("NB", "probuseful"),
   weak_priors = list(),
-  wishart_priors = list()
+  wishart_priors = list(),
+  auto_resample = TRUE,
+  max_rounds = 10,
+  sample_by = 2000,
+  max_draws = 200000,
+  sigma_min = 2,
+  ess_min = 400,
+  compute_evppi_prev = TRUE,
+  evppi_method = "sal",
+  center_rows = NULL,
+  center_label_cols = NULL
 )
 }
 \arguments{
-\item{data}{A data frame containing study-level data.}
+\item{data}{A data frame containing one row per study.}
 
-\item{tp}{Column name or vector of true positives.}
+\item{tp}{<[`data-masking`][rlang::args_data_masking]> Column of true
+positives (unquoted name or string).}
 
-\item{tn}{Column name or vector of true negatives.}
+\item{tn}{<[`data-masking`][rlang::args_data_masking]> Column of true
+negatives (unquoted name or string).}
 
-\item{n_event}{Column name or vector of number of events.}
+\item{n_event}{<[`data-masking`][rlang::args_data_masking]> Column of
+total events per study.}
 
-\item{n_nonevent}{Column name or vector of number of non-events.}
+\item{n_nonevent}{<[`data-masking`][rlang::args_data_masking]> Column of
+total non-events per study.}
 
-\item{prior_type}{Type of prior specification ("weak" or "wishart").}
+\item{prior_type}{Character string specifying the prior structure.
+\code{"weak"} uses weakly informative priors. \code{"wishart"} uses an inverse-Wishart
+prior. Default \code{"weak"}.}
 
-\item{t}{Threshold probability (harm-to-benefit ratio).}
+\item{t}{Numeric scalar in (0, 1). The decision threshold (i.e. harm-to-benefit ratio).
+Required; no default.}
 
-\item{prev_known}{Optional known prevalence value.}
+\item{prev_known}{Numeric scalar in (0, 1). An assumed known prevalence
+used to compute additional NB/RU estimates at a fixed prevalence. Only
+returned if \code{return_known = TRUE}. Default \code{0.5}.}
 
-\item{return_known}{Logical; whether to return results for known prevalence.}
+\item{return_known}{Logical. If \code{TRUE}, also returns posteriors
+evaluated at \code{prev_known} (e.g. \code{pooledNB_known},
+\code{NBnew_known}). Default \code{FALSE}.}
 
-\item{compute_EVPI}{Logical; whether to compute EVPI.}
+\item{compute_EVPI}{Logical. If \code{TRUE}, enables VOI computation.
+Forces the necessary JAGS nodes into the monitored set and activates
+the iterative sampling loop if \code{auto_resample = TRUE}.
+Default \code{FALSE}.}
 
-\item{J}{Number of simulations for VOI calculations.}
+\item{J}{Positive integer. Number of Monte Carlo samples used for the
+within-JAGS population EVPI approximation. Only used when
+\code{compute_EVPI = TRUE}. Default \code{1000}.}
 
-\item{inits}{Optional list of initial values for JAGS.}
+\item{inits}{Optional list of length \code{n.chains}, where each element
+is a named list of initial values for one JAGS chain. If \code{NULL}
+and \code{seed} is provided, RNG seeds are set automatically per chain.}
 
-\item{n.chains}{Number of MCMC chains.}
+\item{n.chains}{Positive integer. Number of MCMC chains. Default \code{2}.}
 
-\item{n.adapt}{Number of adaptation iterations.}
+\item{n.adapt}{Positive integer. Number of JAGS adaptation iterations.
+Default \code{1000}.}
 
-\item{burnin}{Number of burn-in iterations.}
+\item{burnin}{Positive integer. Number of burn-in iterations (discarded).
+Default \code{3000}.}
 
-\item{iter}{Number of sampling iterations.}
+\item{iter}{Positive integer. Number of posterior sampling iterations per
+chain in the first sampling round. Default \code{1000}.}
 
-\item{thin}{Thinning interval.}
+\item{thin}{Positive integer. Thinning interval for MCMC chains.
+Default \code{1}.}
 
-\item{seed}{Optional seed for reproducibility.}
+\item{seed}{Optional integer. Random seed for reproducibility, passed to
+set each JAGS chain's RNG. Ignored if \code{inits} already contains
+\code{.RNG.seed}.}
 
-\item{rng_name}{Name of the JAGS random number generator.}
+\item{rng_name}{Character string. JAGS RNG type. One of
+\code{"base::Wichmann-Hill"} (default),
+\code{"base::Marsaglia-Multicarry"}, \code{"base::Super-Duper"}, or
+\code{"base::Mersenne-Twister"}.}
 
-\item{diag_vars}{Variables to monitor for diagnostics.}
+\item{diag_vars}{Character vector of JAGS node names to monitor for
+convergence diagnostics (trace plots). Set to \code{NULL} or
+\code{character(0)} to suppress trace plots. Default:
+\code{c("pooledsens", "pooledprev", "pooledspec", "pooledNB",
+"pooledNB_TA", "pooledRU")}.}
 
-\item{return_vars}{Variables to return from posterior samples.}
+\item{return_vars}{Character vector of variable families or individual
+JAGS node names to monitor and return. Family names (\code{"NB"},
+\code{"RU"}, \code{"probuseful"}, \code{"sens"}, \code{"spec"}) are
+automatically expanded to include per-study, pooled, and predictive
+nodes. When \code{compute_EVPI = TRUE}, VOI-required nodes are added
+automatically regardless of this argument. Default:
+\code{c("NB", "probuseful")}.}
 
-\item{weak_priors}{List specifying weak prior parameters.}
+\item{weak_priors}{Named list of scalar overrides for the weak prior
+hyperparameters. Valid names: \code{mu_etap}, \code{tau_etap},
+\code{mu_lambdasens0}, \code{tau_lambdasens0}, \code{mu_lambdaspec0},
+\code{tau_lambdaspec0}, \code{mu_zss}, \code{tau_zss}, \code{mu_zsp},
+\code{tau_zsp}, \code{a_csp}, \code{b_csp}, \code{tau_varprev},
+\code{tau_varsens}, \code{tau_varspec}. Unknown names are ignored with
+a warning. Only used when \code{prior_type = "weak"}. Default values are
+based on Wynants et al. (2018).}
 
-\item{wishart_priors}{List specifying Wishart prior parameters.}
+\item{wishart_priors}{Named list of overrides for the Wishart prior
+hyperparameters. Valid names: \code{mn} (length-3 numeric vector),
+\code{prec} (3x3 matrix), \code{R} (3x3 matrix), \code{df} (numeric
+scalar). Unknown names are ignored with a warning. Only used when
+\code{prior_type = "wishart"}. Default values are based on Wynants et al. (2018).}
+
+\item{auto_resample}{Logical. If \code{TRUE} and \code{compute_EVPI = TRUE},
+iteratively draws additional samples of size \code{sample_by} until
+Monte Carlo precision criteria (\code{sigma_min}, \code{ess_min}) are
+met or stopping conditions are reached. Default \code{TRUE}.}
+
+\item{max_rounds}{Positive integer. Maximum number of sampling rounds
+when \code{auto_resample = TRUE}. Default \code{10}.}
+
+\item{sample_by}{Positive integer. Number of additional iterations per
+chain drawn in each resampling round after the first. Default \code{2000}.}
+
+\item{max_draws}{Positive integer. Maximum total number of posterior draws
+(across all chains) before stopping resampling. Default \code{200000}.}
+
+\item{sigma_min}{Numeric. Minimum acceptable signal-to-noise ratio for the
+difference between competing strategies; resampling continues while
+sigma < \code{sigma_min}. Default \code{2}.}
+
+\item{ess_min}{Numeric. Minimum acceptable effective sample size for key
+pooled nodes (\code{pooledNB}, \code{pooledNB_TA}, \code{probuseful});
+resampling continues while any ESS < \code{ess_min}. Corresponds to a
+relative Monte Carlo standard error of at most 5\%. Default \code{400}.}
+
+\item{compute_evppi_prev}{Logical. If \code{TRUE} and
+\code{compute_EVPI = TRUE}, computes the EVPPI for prevalence using the
+\pkg{voi} package. Requires \pkg{voi} to be installed. Default
+\code{TRUE}.}
+
+\item{evppi_method}{Character string. Method passed to \code{voi::evppi()}
+for EVPPI estimation. Default \code{"sal"}.}
+
+\item{center_rows}{Optional integer vector. Row indices of studies in
+\code{data} for which center-specific EVPI should be computed. Only
+active when \code{compute_EVPI = TRUE}. These rows determine which
+per-study NB nodes are monitored and which centers are included in the
+resampling stopping rule. Default \code{NULL}.}
+
+\item{center_label_cols}{Optional character vector of column names in
+\code{data} used to construct human-readable center labels in the
+output. If \code{NULL} or none of the specified columns exist in
+\code{data}, the first column of \code{data} is used. Default
+\code{NULL}.}
 }
 \value{
-A list containing:
-\item{samples}{Posterior samples of model parameters and derived quantities.}
-\item{priors_used}{Details of prior specifications used.}
-\item{meta}{Metadata including MCMC settings and RNG information.}
+A named list with the following elements:
+\describe{
+  \item{\code{samples}}{An \code{mcmc.list} object containing posterior
+    draws for all monitored nodes.}
+  \item{\code{priors_used}}{A tibble summarizing the prior hyperparameter
+    values used after merging defaults with any user overrides.}
+  \item{\code{meta}}{A named list of run metadata including threshold
+    \code{t}, \code{prev_known}, \code{prior_type}, monitored nodes
+    (\code{returned}), MCMC settings, actual draws per chain
+    (\code{saved_per_chain}), total draws (\code{total_saved}), and
+    per-chain RNG information. When \code{compute_EVPI = TRUE}, also
+    includes \code{rounds}, \code{stop_reason}.}
+  \item{\code{voi_metrics}}{A tibble of VOI metrics including
+    \code{EVPI_cluster_perfectinfo}, \code{EVPI_population_perfectinfo},
+    and \code{EVPPI_cluster_perfectprevalenceinfo}. \code{NULL} when
+    \code{compute_EVPI = FALSE}.}
+  \item{\code{voi_diagnostics}}{A tibble of Monte Carlo precision
+    diagnostics including sigma values, ESS, and
+    \code{needs_more_sampling}. \code{NULL} when
+    \code{compute_EVPI = FALSE}.}
+  \item{\code{voi_center_metrics}}{A tibble of center-specific EVPI
+    estimates and diagnostics for each row in \code{center_rows}.
+    \code{NULL} when \code{center_rows} is \code{NULL} or
+    \code{compute_EVPI = FALSE}.}
+  \item{\code{voi_center_meta}}{A data frame of human-readable center
+    labels corresponding to \code{center_rows}. \code{NULL} when
+    \code{center_rows} is \code{NULL} or \code{compute_EVPI = FALSE}.}
+}
 }
 \description{
-Fits a Bayesian trivariate random-effects meta-analysis model for prevalence,
-sensitivity, and specificity using study-level data. Returns
-posterior MCMC samples for Net Benefit (NB), Relative Utility (RU),
-and related clinical utility metrics at a user-specified decision threshold.
+Fits a Bayesian trivariate random-effects meta-analysis model jointly
+modelling sensitivity, specificity, and prevalence across studies using
+study-level data. Returns posterior MCMC samples for Net Benefit (NB),
+Relative Utility (RU), and related clinical utility metrics at a
+user-specified decision threshold. When \code{compute_EVPI = TRUE},
+also computes Value of Information (VOI) metrics including the Expected
+Value of Perfect Information (EVPI) and optionally the Expected Value of
+Partial Perfect Information (EVPPI) for prevalence, with optional
+iterative resampling until Monte Carlo precision criteria are met.
 }
 \examples{
 \dontrun{
-# Minimal example with weak priors
-fit <- MA_NB_tri(data, tp = tp, tn = tn,
-                 n_event = n_event, n_nonevent = n_nonevent,
-                 t = 0.1, prior_type = "weak", seed = 123)
+# Tri-MA only
+fit <- MA_NB_tri(
+  data       = data,
+  tp         = tp,
+  tn         = tn,
+  n_event    = n_event,
+  n_nonevent = n_nonevent,
+  t          = 0.1,
+  prior_type = "weak",
+  seed       = 123
+)
+summary(fit$samples)
+
+# With VOI and center-specific EVPI
+fit_voi <- MA_NB_tri(
+  data          = data,
+  tp            = tp,
+  tn            = tn,
+  n_event       = n_event,
+  n_nonevent    = n_nonevent,
+  t             = 0.1,
+  prior_type    = "weak",
+  compute_EVPI  = TRUE,
+  center_rows   = 1:10,
+  center_label_cols = c("Publication", "Country"),
+  seed          = 123
+)
+fit_voi$voi_metrics
+fit_voi$voi_center_metrics
 }
+
+}
+\references{
+Wynants L, Riley R, Timmerman D, Van Calster B. Random-effects
+meta-analysis of the clinical utility of tests and prediction models.
+\emph{Stat Med} 2018;37(12):2034--52.
+\doi{10.1002/sim.7653}
+}
+\seealso{
+[summarize_tri_ma()], [plot_forest()]
 }

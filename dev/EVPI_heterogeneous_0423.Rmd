@@ -484,12 +484,15 @@ for (i in seq_along(prev_grid)) {
   sum_res <- summarize_tri_ma(
     samples = fit,
     data = data_ADNEXCA125,
-    return_known = TRUE
+    return_known = TRUE,
+    metrics = c("NB", "probuseful", "NBnew_known", "NBnew_TA_known")
   )
   
   nb_model <- sum_res$NB$pooled_known$model
   nb_ta    <- sum_res$NB$pooled_known$treat_all
   
+  nb_model_new <- sum_res$NBnew_known$scalar
+  nb_ta_new    <- sum_res$NBnew_TA_known$scalar
   pi_model <- sum_res$NB$pred_known$model
   pi_ta    <- sum_res$NB$pred_known$treat_all
   
@@ -501,7 +504,14 @@ for (i in seq_along(prev_grid)) {
     treat_all = nb_ta["Mean"]
   )
   
+  means_new <- c(
+    treat_none = 0,
+    model = nb_model_new["Mean"],
+    treat_all = nb_ta_new["Mean"]
+  )
+  
   winner <- names(means)[which.max(means)]
+  winner_new <- names(means_new)[which.max(means_new)]
   
   results_list[[i]] <- data.frame(
     prev_known = p0,
@@ -520,11 +530,14 @@ for (i in seq_along(prev_grid)) {
     NB_TA_median = unname(nb_ta["Median"]),
     NB_TA_cri_low = unname(nb_ta["Low"]),
     NB_TA_cri_high = unname(nb_ta["High"]),
+    NB_model_new_mean = unname(nb_model_new["Mean"]),
+    NB_TA_new_mean = unname(nb_ta_new["Mean"]),
     NB_TA_pi_low = unname(pi_ta["Low"]),
     NB_TA_pi_high = unname(pi_ta["High"]),
     
     probuseful_known = probuseful_known,
-    winner_strategy = winner
+    winner_strategy = winner,
+    winner_strategy_new = winner_new
   )
 }
 
@@ -544,7 +557,8 @@ prev_strategy_df %>%
 ```{r}
 prev_strategy_df <- prev_strategy_df %>%
   dplyr::mutate(
-    winner_strategy = sub("\\..*$", "", winner_strategy)
+    winner_strategy = sub("\\..*$", "", winner_strategy),
+    winner_strategy_new = sub("\\..*$", "", winner_strategy_new)
   ) %>%
   dplyr::rename(probuseful = probuseful_known)
 
@@ -552,7 +566,7 @@ prev_strategy_df_out <- prev_strategy_df %>%
   dplyr::mutate(
     dplyr::across(where(is.numeric), ~ round(.x, 4))
   ) %>%
-  select(prev_known, NB_TN_mean, NB_model_mean, NB_TA_mean, probuseful, winner_strategy)
+  select(prev_known, NB_TN_mean, NB_model_mean, NB_TA_mean, NB_model_new_mean, NB_TA_new_mean, probuseful, winner_strategy, winner_strategy_new)
 
 library(flextable)
 library(officer)
@@ -562,7 +576,7 @@ ft <- autofit(ft)
 
 save_as_docx(
   "Optimal strategy conditional prevalence" = ft,
-  path = "prev_strategy_table.docx"
+  path = "prev_strategy_table_updated.docx"
 )
 ```
 

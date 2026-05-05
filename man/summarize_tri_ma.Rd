@@ -2,54 +2,103 @@
 % Please edit documentation in R/helpers.R
 \name{summarize_tri_ma}
 \alias{summarize_tri_ma}
-\title{Summarize posterior samples from trivariate meta-analysis}
+\title{Summarize posterior samples from a Bayesian trivariate meta-analysis}
 \usage{
 summarize_tri_ma(
   samples,
   data = NULL,
-  label_cols = c("Publication", "Country", "N", "Prev"),
-  metrics = c("NB", "RU", "probuseful"),
-  per_study_metrics = c("NB", "RU"),
+  label_cols = NULL,
+  metrics = c("NB", "probuseful"),
+  per_study_metrics = c("NB"),
   return_known = FALSE,
   include_per_study = TRUE
 )
 }
 \arguments{
-\item{samples}{A fitted object returned by [MA_NB_tri()] or a
-`coda::mcmc.list` of posterior samples.}
+\item{samples}{A fitted object returned by [MA_NB_tri()], or a
+\code{coda::mcmc.list} of posterior samples directly.}
 
-\item{data}{Optional data frame containing study-level information used for
-per-study summaries.}
+\item{data}{Optional data frame containing study-level information. Required
+when per-study summaries are requested (i.e. when \code{include_per_study
+= TRUE} and a metric in \code{per_study_metrics} is requested).}
 
-\item{label_cols}{Character vector giving the columns in `data` to retain in
-per-study output.}
+\item{label_cols}{Optional character vector of column names in \code{data}
+to retain in per-study output (e.g. study labels, country, sample size).}
 
-\item{metrics}{Character vector of metrics to summarize. Defaults to
-`c("NB", "RU", "probuseful")`.}
+\item{metrics}{Character vector of metrics to summarize. Family names
+(\code{"NB"}, \code{"RU"}, \code{"probuseful"}) and atomic JAGS node
+names (e.g. \code{"pooledprev"}, \code{"NBnew_known"}) are both accepted.
+Default: \code{c("NB", "probuseful")}.}
 
 \item{per_study_metrics}{Character vector of metrics for which per-study
-summaries should be returned when `include_per_study = TRUE`.}
+summaries should be returned. Only used when \code{include_per_study =
+TRUE}. Default: \code{c("NB")}.}
 
-\item{return_known}{Logical; whether to include summaries based on the known
-prevalence setting, if available in the fitted object.}
+\item{return_known}{Logical. If \code{TRUE}, also returns summaries
+evaluated at the fixed known prevalence (e.g. \code{pooledNB_known},
+\code{NBnew_known}). Requires that \code{return_known = TRUE} was set
+when fitting with [MA_NB_tri()]. Default \code{FALSE}.}
 
-\item{include_per_study}{Logical; whether to include per-study summaries.}
+\item{include_per_study}{Logical. If \code{TRUE}, per-study posterior
+summaries are included for metrics listed in \code{per_study_metrics}.
+Requires \code{data} to be supplied. Default \code{TRUE}.}
 }
 \value{
-A named list containing summaries for the requested metrics. Depending on the
-metric, the list may include per-study summaries, pooled summaries,
-predictive summaries, and summaries for the known-prevalence setting.
+A named list with one element per requested metric. For family
+  metrics (\code{"NB"}, \code{"RU"}), each element contains:
+\describe{
+  \item{\code{per_study}}{A data frame of per-study posterior summaries
+    (mean, median, 95\% CrI), merged with \code{label_cols} from
+    \code{data}. \code{NULL} if \code{include_per_study = FALSE}.}
+  \item{\code{pooled}}{Named list of pooled posterior summaries (mean,
+    median, 95\% CrI) for the model and treat-all strategies.}
+  \item{\code{predictive}}{Named list of posterior predictive summaries
+    (mean, median, 95\% PI) for a new center for the model and treat-all
+    strategies.}
+  \item{\code{pooled_known}}{As \code{pooled} but at fixed known
+    prevalence. \code{NULL} if \code{return_known = FALSE}.}
+  \item{\code{pred_known}}{As \code{predictive} but at fixed known
+    prevalence. \code{NULL} if \code{return_known = FALSE}.}
+}
+For \code{"probuseful"}, a list with \code{value} and
+optionally \code{value_known}. For atomic node names, a list with
+\code{scalar} containing the posterior summary.
 }
 \description{
-Summarizes posterior samples from a Bayesian trivariate meta-analysis fit.
-The function extracts pooled, predictive, and optionally per-study summaries
-for selected metrics, and returns them in a structured named list.
+Extracts and structures posterior summaries from a fitted Bayesian
+trivariate meta-analysis. For each requested metric, returns pooled
+estimates (posterior mean, median, and 95% credible interval),
+predictive summaries for a new center (mean, median, and 95% prediction
+interval), and optionally per-study summaries and summaries at a fixed
+known prevalence.
 }
 \examples{
 \dontrun{
-fit <- MA_NB_tri(data, tp = tp, tn = tn,
-                 n_event = n_event, n_nonevent = n_nonevent,
-                 t = 0.1, prior_type = "weak", seed = 123)
-summary <- summarize_tri_ma(fit)
+fit <- MA_NB_tri(
+  data       = data,
+  tp         = tp,
+  tn         = tn,
+  n_event    = n_event,
+  n_nonevent = n_nonevent,
+  t          = 0.1,
+  prior_type = "weak",
+  seed       = 123
+)
+
+# Default summaries
+summary <- summarize_tri_ma(fit, data = data,
+                        label_cols = c("Publication", "Country"))
+summary$NB$pooled$model       # pooled NB: mean, median, 95\% CrI
+summary$NB$predictive$model   # predictive NB for new center
+summary$probuseful$value      # P(useful)
+
+# Include known-prevalence summaries
+fit2 <- MA_NB_tri(..., prev_known = 0.5, return_known = TRUE)
+summary2 <- summarize_tri_ma(fit2, data = data, return_known = TRUE)
+summary2$NB$pooled_known$model
 }
+
+}
+\seealso{
+[MA_NB_tri()], [plot_forest()]
 }

@@ -92,14 +92,15 @@ summary(MA_NBCA125_wishart)
 
 ##################################  VOI  #####################################
 MA_NBCA125_weak_forVOI <- MA_NB_tri(data = data_ADNEXCA125, tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,
-                             prior_type = "weak", t = 0.1,
+                             prior_type = "weak", t = 0.1, seed = 123,
                              return_vars = c("NBnew", "NBnew_TA", "ENBnew", "ENBnew_TA", "prevnew", "pooledNB", "pooledNB_TA", "probuseful"),
                              compute_EVPI = TRUE)
 
-res <- compute_voi_metrics(MA_NBCA125_weak_forVOI)
+res <- compute_voi_metrics(MA_NBCA125_weak_forVOI$samples)
 res$metrics
 res$diagnostics
 
+-------------------------------------------
 fit_voi <- sample_voi_draws(
   data = data_ADNEXCA125,
   tp = tp, tn = tn, n_event = n_event, n_nonevent = n_nonevent,

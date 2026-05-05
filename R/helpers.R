@@ -69,7 +69,7 @@ get_samples <- function(x) {
 .summarize_for_forestplot <- function(
     samples,
     data = NULL,
-    label_cols = c("Publication", "Country", "N", "Prev"),
+    label_cols = NULL,
     targets = c("NB", "probuseful"),
     targets_per_study = c("NB"),
     return_known = FALSE
@@ -90,6 +90,7 @@ get_samples <- function(x) {
       warning("Missing label_cols ignored: ", paste(missing_labels, collapse = ", "))
     }
     label_cols <- intersect(label_cols, names(data))
+    if (is.null(label_cols)) label_cols <- names(data)[1]
     study_info <- data[, label_cols, drop = FALSE]
   }
 
@@ -101,22 +102,13 @@ get_samples <- function(x) {
 
   # ---- helpers ----
   # Posterior summaries are built from node names in the MCMC output.
-  # `get_cri()` returns mean/median/95% credible interval for pooled quantities,
-  # `get_pi()` returns the 95% interval for predictive quantities,
+  # `get_summary()` returns mean/median/95% interval,
   # and `get_mean_only()` is used for scalar probabilities such as probuseful.
-  get_cri <- function(name) {
+  get_summary <- function(name) {
     if (!name %in% rownames(stats)) return(NULL)
     c(
       Mean = stats[name, "Mean"],
       Median = quants[name, "50%"],
-      Low  = quants[name, "2.5%"],
-      High = quants[name, "97.5%"]
-    )
-  }
-
-  get_pi <- function(name) {
-    if (!name %in% rownames(stats)) return(NULL)
-    c(
       Low  = quants[name, "2.5%"],
       High = quants[name, "97.5%"]
     )
@@ -275,7 +267,7 @@ get_samples <- function(x) {
       pooled <- list()
       if (!is.null(metric_def$pooled)) {
         for (k in names(metric_def$pooled)) {
-          pooled[[k]] <- get_cri(metric_def$pooled[[k]])
+          pooled[[k]] <- get_summary(metric_def$pooled[[k]])
         }
         pooled <- pooled[!sapply(pooled, is.null)]
         if (length(pooled) == 0) pooled <- NULL
@@ -285,7 +277,7 @@ get_samples <- function(x) {
       predictive <- list()
       if (!is.null(metric_def$predictive)) {
         for (k in names(metric_def$predictive)) {
-          predictive[[k]] <- get_pi(metric_def$predictive[[k]])
+          predictive[[k]] <- get_summary(metric_def$predictive[[k]])
         }
         predictive <- predictive[!sapply(predictive, is.null)]
         if (length(predictive) == 0) predictive <- NULL
@@ -296,18 +288,18 @@ get_samples <- function(x) {
       if (return_known && !is.null(metric_def$pooled_known)) {
         pooled_known <- list()
         for (k in names(metric_def$pooled_known)) {
-          pooled_known[[k]] <- get_cri(metric_def$pooled_known[[k]])
+          pooled_known[[k]] <- get_summary(metric_def$pooled_known[[k]])
         }
         pooled_known <- pooled_known[!sapply(pooled_known, is.null)]
         if (length(pooled_known) == 0) pooled_known <- NULL
       }
 
-      # ---- pred_known (PI or mean-only) ----
+      # ---- pred_known ----
       pred_known <- NULL
       if (return_known && !is.null(metric_def$pred_known)) {
         pred_known <- list()
         for (k in names(metric_def$pred_known)) {
-          pred_known[[k]] <- get_pi(metric_def$pred_known[[k]])
+          pred_known[[k]] <- get_summary(metric_def$pred_known[[k]])
         }
         pred_known <- pred_known[!sapply(pred_known, is.null)]
         if (length(pred_known) == 0) pred_known <- NULL
@@ -341,7 +333,7 @@ get_samples <- function(x) {
       scalar <- NULL
       if (tar %in% rownames(stats)) {
         if (tar %in% rownames(quants)) {
-          scalar <- get_cri(tar)
+          scalar <- get_summary(tar)
         } else {
           scalar <- get_mean_only(tar)
         }
@@ -361,47 +353,93 @@ get_samples <- function(x) {
 
 ####################------------------- user-facing summarizer ----------------------######################
 
-#' Summarize posterior samples from trivariate meta-analysis
+#' Summarize posterior samples from a Bayesian trivariate meta-analysis
 #'
 #' @description
-#' Summarizes posterior samples from a Bayesian trivariate meta-analysis fit.
-#' The function extracts pooled, predictive, and optionally per-study summaries
-#' for selected metrics, and returns them in a structured named list.
+#' Extracts and structures posterior summaries from a fitted Bayesian
+#' trivariate meta-analysis. For each requested metric, returns pooled
+#' estimates (posterior mean, median, and 95% credible interval),
+#' predictive summaries for a new center (mean, median, and 95% prediction
+#' interval), and optionally per-study summaries and summaries at a fixed
+#' known prevalence.
 #'
-#' @param samples A fitted object returned by [MA_NB_tri()] or a
-#'   `coda::mcmc.list` of posterior samples.
-#' @param data Optional data frame containing study-level information used for
-#'   per-study summaries.
-#' @param label_cols Character vector giving the columns in `data` to retain in
-#'   per-study output.
-#' @param metrics Character vector of metrics to summarize. Defaults to
-#'   `c("NB", "RU", "probuseful")`.
+#' @param samples A fitted object returned by [MA_NB_tri()], or a
+#'   \code{coda::mcmc.list} of posterior samples directly.
+#' @param data Optional data frame containing study-level information. Required
+#'   when per-study summaries are requested (i.e. when \code{include_per_study
+#'   = TRUE} and a metric in \code{per_study_metrics} is requested).
+#' @param label_cols Optional character vector of column names in \code{data}
+#'   to retain in per-study output (e.g. study labels, country, sample size).
+#' @param metrics Character vector of metrics to summarize. Family names
+#'   (\code{"NB"}, \code{"RU"}, \code{"probuseful"}) and atomic JAGS node
+#'   names (e.g. \code{"pooledprev"}, \code{"NBnew_known"}) are both accepted.
+#'   Default: \code{c("NB", "probuseful")}.
 #' @param per_study_metrics Character vector of metrics for which per-study
-#'   summaries should be returned when `include_per_study = TRUE`.
-#' @param return_known Logical; whether to include summaries based on the known
-#'   prevalence setting, if available in the fitted object.
-#' @param include_per_study Logical; whether to include per-study summaries.
+#'   summaries should be returned. Only used when \code{include_per_study =
+#'   TRUE}. Default: \code{c("NB")}.
+#' @param return_known Logical. If \code{TRUE}, also returns summaries
+#'   evaluated at the fixed known prevalence (e.g. \code{pooledNB_known},
+#'   \code{NBnew_known}). Requires that \code{return_known = TRUE} was set
+#'   when fitting with [MA_NB_tri()]. Default \code{FALSE}.
+#' @param include_per_study Logical. If \code{TRUE}, per-study posterior
+#'   summaries are included for metrics listed in \code{per_study_metrics}.
+#'   Requires \code{data} to be supplied. Default \code{TRUE}.
 #'
-#' @returns
-#' A named list containing summaries for the requested metrics. Depending on the
-#' metric, the list may include per-study summaries, pooled summaries,
-#' predictive summaries, and summaries for the known-prevalence setting.
+#' @return A named list with one element per requested metric. For family
+#'   metrics (\code{"NB"}, \code{"RU"}), each element contains:
+#' \describe{
+#'   \item{\code{per_study}}{A data frame of per-study posterior summaries
+#'     (mean, median, 95\% CrI), merged with \code{label_cols} from
+#'     \code{data}. \code{NULL} if \code{include_per_study = FALSE}.}
+#'   \item{\code{pooled}}{Named list of pooled posterior summaries (mean,
+#'     median, 95\% CrI) for the model and treat-all strategies.}
+#'   \item{\code{predictive}}{Named list of posterior predictive summaries
+#'     (mean, median, 95\% PI) for a new center for the model and treat-all
+#'     strategies.}
+#'   \item{\code{pooled_known}}{As \code{pooled} but at fixed known
+#'     prevalence. \code{NULL} if \code{return_known = FALSE}.}
+#'   \item{\code{pred_known}}{As \code{predictive} but at fixed known
+#'     prevalence. \code{NULL} if \code{return_known = FALSE}.}
+#' }
+#' For \code{"probuseful"}, a list with \code{value} and
+#' optionally \code{value_known}. For atomic node names, a list with
+#' \code{scalar} containing the posterior summary.
 #'
-#' @export
+#' @seealso [MA_NB_tri()], [plot_forest()]
 #'
 #' @examples
 #' \dontrun{
-#' fit <- MA_NB_tri(data, tp = tp, tn = tn,
-#'                  n_event = n_event, n_nonevent = n_nonevent,
-#'                  t = 0.1, prior_type = "weak", seed = 123)
-#' summary <- summarize_tri_ma(fit)
+#' fit <- MA_NB_tri(
+#'   data       = data,
+#'   tp         = tp,
+#'   tn         = tn,
+#'   n_event    = n_event,
+#'   n_nonevent = n_nonevent,
+#'   t          = 0.1,
+#'   prior_type = "weak",
+#'   seed       = 123
+#' )
+#'
+#' # Default summaries
+#' summary <- summarize_tri_ma(fit, data = data,
+#'                         label_cols = c("Publication", "Country"))
+#' summary$NB$pooled$model       # pooled NB: mean, median, 95% CrI
+#' summary$NB$predictive$model   # predictive NB for new center
+#' summary$probuseful$value      # P(useful)
+#'
+#' # Include known-prevalence summaries
+#' fit2 <- MA_NB_tri(..., prev_known = 0.5, return_known = TRUE)
+#' summary2 <- summarize_tri_ma(fit2, data = data, return_known = TRUE)
+#' summary2$NB$pooled_known$model
 #' }
+#'
+#' @export
 summarize_tri_ma <- function(
     samples,
     data = NULL,
-    label_cols = c("Publication", "Country", "N", "Prev"),
-    metrics = c("NB", "RU", "probuseful"),
-    per_study_metrics = c("NB", "RU"),
+    label_cols = NULL,
+    metrics = c("NB", "probuseful"),
+    per_study_metrics = c("NB"),
     return_known = FALSE,
     include_per_study = TRUE
 ) {
@@ -911,6 +949,15 @@ mcmc_list_to_draws <- function(samples) {
   # row-bind all chains; keep parameter names as columns
   mats <- lapply(samples, as.matrix)
   draws <- do.call(rbind, mats)
+
+  # deduplicate columns defensively before coercing to data frame
+  # This is needed because expand_target in MA_NB_tri() expands to per-study NB[]s, but center_rows() also requests specific per-study NB[]s
+  dups <- colnames(draws)[duplicated(colnames(draws))]
+  if (length(dups) > 0) {
+    message("Removing duplicate columns from mcmc matrix: ",
+            paste(unique(dups), collapse = ", "))
+    draws <- draws[, !duplicated(colnames(draws)), drop = FALSE]
+  }
 
   # safer as tibble/data.frame; preserve numeric columns
   draws <- as.data.frame(draws, check.names = FALSE)

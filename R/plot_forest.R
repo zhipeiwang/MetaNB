@@ -1,62 +1,145 @@
 #' Forest plot for trivariate meta-analysis summaries
 #'
 #' @description
-#' Creates a forest plot for net benefit, relative utility, sensitivity, or
-#' specificity using posterior samples from a Bayesian trivariate meta-analysis
-#' and the corresponding study-level data.
+#' Produces a forest plot for net benefit (NB), relative utility (RU),
+#' sensitivity, or specificity from a fitted Bayesian trivariate meta-analysis.
+#' Per-study point estimates and intervals are displayed alongside the pooled
+#' posterior estimate and the 95% prediction interval for a new center.
+#' For the forest plot for net benefit, the posterior probability (\eqn{P(\text{useful})})
+#' that the model is useful at a new center is also shown.
 #'
-#' @param samples A `coda::mcmc.list` of posterior samples, typically
-#'   `fit$samples` from [MA_NB_tri()].
-#' @param data A data frame containing study-level data and labels.
-#' @param label_cols Character vector of columns in `data` to display in the
-#'   plot table.
-#' @param study_label_col Optional column in `data` used for study labels and
-#'   summary row labels. If `NULL`, the first entry of `label_cols` is used.
-#' @param metric Metric to plot. One of `"NB"`, `"RU"`, `"sens"`, or `"spec"`.
-#' @param center Summary measure used for pooled point estimates. One of
-#'   `"Median"` or `"Mean"`.
-#' @param t Threshold probability. Required when observed-study net benefit or
-#'   analytical net benefit confidence intervals are used.
-#' @param xlim Optional x-axis limits.
-#' @param xticks Optional tick marks for the x-axis.
-#' @param plot_col_width Width of the blank plotting column used internally by
-#'   `forestploter`.
-#' @param reported_low_col Optional column in `data` containing reported lower
-#'   interval bounds.
-#' @param reported_high_col Optional column in `data` containing reported upper
-#'   interval bounds.
-#' @param reported_est_col Optional column in `data` containing reported point
-#'   estimates.
-#' @param interval_fallback Optional fallback interval method. If `NULL`, a
-#'   default is chosen based on `metric`.
-#' @param mark_imputed Logical; whether to mark study rows where displayed point
-#'   estimates or intervals were filled in rather than fully taken from
-#'   reported study values.
-#' @param file_png Optional file path for saving the plot as PNG.
-#' @param file_pdf Optional file path for saving the plot as PDF.
+#' Per-study point estimates and intervals are determined by a priority
+#' hierarchy: reported values from \code{data} take precedence, followed by
+#' observed or analytically derived values, followed by model-based posterior
+#' summaries. Imputed values are flagged with \eqn{\dagger} (point estimates)
+#' and \eqn{*} (intervals) when \code{mark_imputed = TRUE}.
 #'
-#' @returns
-#' A forest plot object produced by the `forestploter` package. The plot is also
-#' drawn as a side effect.
+#' @param samples A \code{coda::mcmc.list} of posterior samples, typically
+#'   \code{fit$samples} from [MA_NB_tri()].
+#' @param data A data frame containing study-level data and display labels.
+#'   Must have one row per study in the same order as the fitted model.
+#' @param label_cols Character vector of column names in \code{data} to display
+#'   as table columns in the plot.
+#' @param study_label_col Optional column name in \code{data} that receives the
+#'   summary row labels ("Pooled estimate", "Prediction interval", "P(useful)").
+#'   If \code{NULL}, the first entry of \code{label_cols} is used.
+#' @param metric Metric to plot. One of \code{"NB"} (net benefit),
+#'   \code{"RU"} (relative utility), \code{"sens"} (sensitivity), or
+#'   \code{"spec"} (specificity). Default \code{"NB"}.
+#' @param center Posterior summary used as the point estimate per study and for the pooled
+#'   row, and for sorting studies. One of \code{"Mean"} (default) or
+#'   \code{"Median"}.
+#' @param t Numeric scalar in (0, 1). The decision threshold. Required when
+#'   \code{metric = "NB"} and observed or analytically derived per-study
+#'   estimates are needed.
+#' @param xlim Optional numeric vector of length 2 giving x-axis limits. If
+#'   \code{NULL}, limits are derived automatically from the data with padding,
+#'   and 0 is always included.
+#' @param xticks Optional numeric vector of x-axis tick positions.
+#' @param plot_col_width Integer. Width in characters of the blank column used
+#'   internally by \pkg{forestploter} to render the plot panel. Increase if
+#'   the plot appears cramped. Default \code{50}.
+#' @param reported_est_col Optional column name in \code{data} containing
+#'   reported per-study point estimates. Takes priority over observed and
+#'   model-based values.
+#' @param reported_low_col Optional column name in \code{data} containing
+#'   reported lower interval bounds.
+#' @param reported_high_col Optional column name in \code{data} containing
+#'   reported upper interval bounds.
+#' @param interval_fallback Optional character string specifying the fallback
+#'   interval method for studies lacking reported intervals. If \code{NULL},
+#'   defaults are chosen by metric: \code{"frequentist"} (Wilson's method via
+#'   \pkg{mada}) for sensitivity and specificity, \code{"analytic"} (delta
+#'   method) for NB, and \code{"model"} (posterior CrI) for RU.
+#' @param mark_imputed Logical. If \code{TRUE}, per-study rows where the
+#'   displayed point estimate or interval was not taken directly from reported
+#'   values are flagged with \eqn{\dagger} and \eqn{*} respectively.
+#'   Default \code{TRUE}.
+#' @param file_png Optional file path. If supplied, the plot is saved as a PNG
+#'   at 300 dpi in addition to being displayed.
+#' @param file_pdf Optional file path. If supplied, the plot is saved as a PDF
+#'   in addition to being displayed.
 #'
-#' @export
+#' @return The \pkg{forestploter} plot object, returned invisibly. The plot is
+#'   also rendered as a side effect. If \code{file_png} or \code{file_pdf} are
+#'   supplied, the plot is additionally saved to those paths.
+#'
+#' @details
+#' Studies are sorted in ascending order of the displayed point estimate.
+#' The pooled row uses a filled diamond and reflects the posterior mean or
+#' median of the pooled estimate across the observed studies. The prediction
+#' interval row reflects the 95% interval for a hypothetical new center
+#' and is rendered as a horizontal bar with no point estimate.
+#'
+#' Interval column headers are labelled \code{95\% CrI} when all displayed
+#' intervals are model-based, and \code{95\% CI} otherwise.
+#'
+#' @references
+#' Wynants L, Riley R, Timmerman D, Van Calster B. Random-effects
+#' meta-analysis of the clinical utility of tests and prediction models.
+#' \emph{Stat Med} 2018;37(12):2034--52.
+#' \doi{10.1002/sim.7653}
+#'
+#' Agresti A, Coull BA. Approximate is better than "exact" for interval
+#' estimation of binomial proportions. \emph{Am Stat} 1998;52(2):119--26.
+#' \doi{10.2307/2685469}
+#'
+#' Brown LD, Cai TT, DasGupta A. Interval estimation for a binomial
+#' proportion. \emph{Stat Sci} 2001;16(2):101--17.
+#'
+#' Sande SZ, Li J, D'Agostino R, Wong TY, Cheng CY. Statistical inference
+#' for decision curve analysis, with applications to cataract diagnosis.
+#' \emph{Stat Med} 2020;39(22):2980--3002.
+#' \doi{10.1002/sim.8588}
+#'
+#' Dayimu A (2026). \emph{forestploter: Create a Flexible Forest Plot}.
+#' \doi{10.32614/CRAN.package.forestploter}
+#'
+#' Doebler P (2025). \emph{mada: Meta-Analysis of Diagnostic Accuracy}.
+#' \doi{10.32614/CRAN.package.mada}
+#'
+#' @seealso [MA_NB_tri()], [summarize_tri_ma()]
 #'
 #' @examples
 #' \dontrun{
-#' fit <- MA_NB_tri(data, tp = tp, tn = tn,
-#'                  n_event = n_event, n_nonevent = n_nonevent,
-#'                  t = 0.1, prior_type = "weak", seed = 123)
-#' plot_forest(samples = fit$samples, data = data, metric = "NB",
-#'             label_cols = c("Publication", "Country", "N", "Prev"),
-#'             t = 0.1)
+#' fit <- MA_NB_tri(
+#'   data       = data,
+#'   tp         = tp,
+#'   tn         = tn,
+#'   n_event    = n_event,
+#'   n_nonevent = n_nonevent,
+#'   t          = 0.1,
+#'   prior_type = "weak",
+#'   seed       = 123
+#' )
+#'
+#' # Basic NB forest plot
+#' plot_forest(
+#'   samples   = fit$samples,
+#'   data      = data,
+#'   label_cols = c("Publication", "Country"),
+#'   metric    = "NB",
+#'   t         = 0.1
+#' )
+#'
+#' # Sensitivity forest plot saved to file
+#' plot_forest(
+#'   samples   = fit$samples,
+#'   data      = data,
+#'   label_cols = c("Publication", "Country"),
+#'   metric    = "sens",
+#'   file_png  = "forest_sens.png"
+#' )
 #' }
+#'
+#' @export
 plot_forest <- function(
     samples,
     data,
     label_cols = NULL,
     study_label_col = NULL,
     metric = c("NB", "RU", "sens", "spec"),
-    center = c("Median", "Mean"),
+    center = c("Mean", "Median"),
     t = NULL,
     xlim = NULL,
     xticks = NULL,
@@ -161,8 +244,10 @@ plot_forest <- function(
     if (!study_label_col %in% names(data)) {
       stop("`study_label_col` = '", study_label_col, "' not found in `data`.", call. = FALSE)
     }
-    # ensure it's included in the table
-    if (!study_label_col %in% label_cols) label_cols <- c(study_label_col, label_cols)
+    # ensure it's included in the table and is the first column
+    if (!is.null(study_label_col) && study_label_col %in% label_cols) {
+      label_cols <- c(study_label_col, setdiff(label_cols, study_label_col))
+    }
   }
 
 
