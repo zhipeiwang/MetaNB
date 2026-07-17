@@ -18,6 +18,10 @@ The vignette demonstrates a typical workflow, including:
 
 ## Installation
 
+MetaNB uses JAGS through the `rjags` package. JAGS must therefore be installed on the system before MetaNB can be used. You can download JAGS from https://sourceforge.net/projects/mcmc-jags/files/
+
+After installing JAGS, install MetaNB with:
+
 ```r
 remotes::install_github("zhipeiwang/MetaNB")
 ```
