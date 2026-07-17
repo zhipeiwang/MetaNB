@@ -239,6 +239,30 @@ MA_NB_tri <- function(data,
 
   prior_type <- match.arg(prior_type)
 
+  # ---- check JAGS installation ----
+  jags_version <- tryCatch(
+    rjags::jags.version(),
+    error = function(e) NULL
+  )
+
+  if (is.null(jags_version)) {
+    stop(
+      "MetaNB requires JAGS, but a working JAGS installation could not be found.\n",
+      "Please install JAGS separately, restart R, and then reload MetaNB.\n",
+      "See the MetaNB README for installation instructions.",
+      call. = FALSE
+    )
+  }
+
+  if (jags_version < package_version("4.0.0")) {
+    stop(
+      "MetaNB requires JAGS version 4.0.0 or later. Detected version: ",
+      as.character(jags_version),
+      ".",
+      call. = FALSE
+    )
+  }
+
   # require t
   if (is.null(t) || !is.numeric(t) || length(t) != 1 || t <= 0 || t >= 1) {
     stop("Argument `t` must be a single value in (0, 1) and must be supplied.")
