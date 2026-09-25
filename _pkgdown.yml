@@ -1,0 +1,27 @@
+url: https://zhipeiwang.github.io/MetaNB/
+
+# Use a separate directory while developing the new website.
+# Preventing pkgdown from overwriting the existing docs/ website.
+destination: pkgdown-preview
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left: [intro, reference, articles]
+    right: [search, github]
+
+reference:
+- title: "Model fitting"
+  contents:
+  - MA_NB_tri
+
+- title: "Summaries and visualization"
+  contents:
+  - summarize_tri_ma
+  - plot_forest
+
+- title: "Example data"
+  contents:
+  - data_ADNEXCA125
