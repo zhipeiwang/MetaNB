@@ -14,7 +14,7 @@
 ## Citation
 
 Source:
-[`DESCRIPTION`](https://github.com/zhipeiwang/MetaNB/blob/pkgdown/DESCRIPTION)
+[`DESCRIPTION`](https://github.com/zhipeiwang/MetaNB/blob/master/DESCRIPTION)
 
 Wang K, Wang J, Wynants L (2026). *MetaNB: Meta-Analysis of Net Benefit
 and Value-of-Information*. R package version 0.0.0.9000,
