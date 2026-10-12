@@ -36,9 +36,10 @@ library(MetaNB)
 library(dplyr)
 library(coda)
 ```
+
 # Introduction
 
-This vignette provides a step-by-step introduction to the MetaNB package, which implements a trivariate random-effects meta-analysis of prevalence, sensitivity, and specificity, to indirectly meta-analyze Net Benefit, along with associated value-of-information (VOI) metrics for quantifying decision uncertainty. The trivariate random-effects meta-analysis is described in detail in [@wynants_random-effects_2018], and the associated VOI framework is described in \[ref placeholder\].
+This vignette provides a step-by-step introduction to the MetaNB package, which implements a trivariate random-effects meta-analysis of prevalence, sensitivity, and specificity, to indirectly meta-analyze Net Benefit, along with associated value-of-information (VOI) metrics for quantifying decision uncertainty. The trivariate random-effects meta-analysis is described in detail in [@wynants_random-effects_2018], and the associated VOI framework is described in [@wynants2026valueofinformationanalysisexternalvalidation].
 
 This vignette demonstrates a typical workflow: importing study-level data, fitting a trivariate meta-analysis model, assessing convergence, summarizing posterior draws, visualizing results with forest plots, and obtaining VOI metrics when decision uncertainty is of interest.
 
@@ -53,10 +54,10 @@ When `compute_EVPI = TRUE` and other related arguments are supplied, `MA_NB_tri(
 The IOTA-ADNEX is a regression model that distinguishes between benign and several types of malignant adnexal masses [@van_calster_evaluating_2014]. The dataset used in this vignette is from a systematic review of external validation studies of ADNEX [@barrenada_adnex_2024], in which sensitivity and specificity were meta-analyzed at the commonly used 10% risk of malignancy threshold.
 
 For illustration purposes, we restrict the dataset to studies in which ADNEX was used with CA125, and refer to this subset as `data_ADNEXCA125`. The dataset is available in the MetaNB package, and is loaded automatically with `library(MetaNB)`. It contains the numbers of true positives and true negatives, numbers of events and non-events, reported sensitivity and specificity with corresponding confidence intervals, as well as characteristics of each validation setting such as publication, country, sample size, and prevalence. In this example dataset, rows correspond to validation centers rather than studies, so studies containing multiple centers may contribute more than one row.
+
 ```{r}
 knitr::kable(head(data_ADNEXCA125))
 ```
-
 
 Throughout this vignette, we use `data_ADNEXCA125` as a running example to illustrate the package functionality.
 
@@ -75,7 +76,6 @@ library(MetaNB)
 library(dplyr)
 library(coda)
 ```
-
 
 ```{r echo=FALSE}
 # set options for better display of tables and numbers
