@@ -9,7 +9,8 @@ Benefit, along with associated value-of-information (VOI) metrics for
 quantifying decision uncertainty. The trivariate random-effects
 meta-analysis is described in detail in ([Wynants et al.
 2018](#ref-wynants_random-effects_2018)), and the associated VOI
-framework is described in \[ref placeholder\].
+framework is described in ([Wynants et al.
+2026](#ref-wynants2026valueofinformationanalysisexternalvalidation)).
 
 This vignette demonstrates a typical workflow: importing study-level
 data, fitting a trivariate meta-analysis model, assessing convergence,
@@ -1393,6 +1394,11 @@ Model to Differentiate Between Benign, Borderline, Early and Advanced
 Stage Invasive, and Secondary Metastatic Tumours: Prospective
 Multicentre Diagnostic Study*. October.
 <https://doi.org/10.1136/bmj.g5920>.
+
+Wynants, Laure, Kim Zhipei Wang, Sabine Grimm, et al. 2026.
+*Value-of-Information Analysis for External Validation of Risk
+Prediction Models in Multicenter Studies and Systematic Reviews*.
+<https://arxiv.org/abs/2607.02321>.
 
 Wynants, L., R.d. Riley, D. Timmerman, and B. Van Calster. 2018.
 “Random-Effects Meta-Analysis of the Clinical Utility of Tests and
