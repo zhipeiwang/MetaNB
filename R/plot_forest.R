@@ -5,14 +5,15 @@
 #' sensitivity, or specificity from a fitted Bayesian trivariate meta-analysis.
 #' Per-study point estimates and intervals are displayed alongside the pooled
 #' posterior estimate and the 95% prediction interval for a new center.
-#' For the forest plot for net benefit, the posterior probability \eqn{P(\text{useful})}
+#' For the forest plot for net benefit, the posterior probability
+#' \eqn{P(\mathrm{useful})}{P(useful)}
 #' that the model is useful at a new center is also shown.
 #'
 #' Per-study point estimates and intervals are determined by a priority
 #' hierarchy: reported values from `data` take precedence, followed by
 #' observed or analytically derived values, followed by model-based posterior
-#' summaries. Imputed values are flagged with \eqn{\dagger} (point estimates)
-#' and \eqn{*} (intervals) when `mark_imputed = TRUE`.
+#' summaries. Imputed values are flagged with \eqn{\dagger}{dagger} (point estimates)
+#' and \eqn{\ast}{*} (intervals) when `mark_imputed = TRUE`.
 #'
 #' @param samples A `coda::mcmc.list` of posterior samples, typically
 #'   `fit$samples` from [MA_NB_tri()].
@@ -41,7 +42,7 @@
 #'   and 0 is always included.
 #' @param xticks Optional numeric vector of x-axis tick positions.
 #' @param plot_col_width Integer. Width in characters of the blank column used
-#'   internally by the package \pkg{forestploter} to render the plot panel. Increase if
+#'   internally by the package `forestploter` to render the plot panel. Increase if
 #'   the plot appears cramped. Default `50`.
 #' @param reported_est_col Optional column name in `data` containing
 #'   reported per-study point estimates. Takes priority over observed and
@@ -54,18 +55,18 @@
 #'   interval method for studies lacking reported intervals. If `NULL`,
 #'   defaults are chosen by metric: `"frequentist"` for NB (Sande et al. 2020), and also `"frequentist"`
 #'   for sensitivity and specificity (Wilson's method via
-#'   the `madad` function in the pacakge \pkg{mada}),
+#'   the `madad` function in the package `mada`),
 #'   and `"model"` (posterior CrI) for RU.
 #' @param mark_imputed Logical. If `TRUE`, per-study rows where the
 #'   displayed point estimate or interval was not taken directly from reported
-#'   values are flagged with \eqn{\dagger} and \eqn{*} respectively.
-#'   Default `TRUE`.
+#'   values are flagged with \eqn{\dagger}{dagger} and \eqn{\ast}{*},
+#'   respectively. Default `TRUE`.
 #' @param file_png Optional file path. If supplied, the plot is saved as a PNG
 #'   at 300 dpi in addition to being displayed.
 #' @param file_pdf Optional file path. If supplied, the plot is saved as a PDF
 #'   in addition to being displayed.
 #'
-#' @return The \pkg{forestploter} plot object, returned invisibly. The plot is
+#' @return The `forestploter` plot object, returned invisibly. The plot is
 #'   also rendered as a side effect. If `file_png` or `file_pdf` are
 #'   supplied, the plot is additionally saved to those paths.
 #'

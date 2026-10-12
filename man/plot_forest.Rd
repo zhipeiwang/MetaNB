@@ -69,7 +69,7 @@ and 0 is always included.}
 \item{xticks}{Optional numeric vector of x-axis tick positions.}
 
 \item{plot_col_width}{Integer. Width in characters of the blank column used
-internally by the package \pkg{forestploter} to render the plot panel. Increase if
+internally by the package \code{forestploter} to render the plot panel. Increase if
 the plot appears cramped. Default \code{50}.}
 
 \item{reported_low_col}{Optional column name in \code{data} containing
@@ -86,13 +86,13 @@ model-based values.}
 interval method for studies lacking reported intervals. If \code{NULL},
 defaults are chosen by metric: \code{"frequentist"} for NB (Sande et al. 2020), and also \code{"frequentist"}
 for sensitivity and specificity (Wilson's method via
-the \code{madad} function in the pacakge \pkg{mada}),
+the \code{madad} function in the package \code{mada}),
 and \code{"model"} (posterior CrI) for RU.}
 
 \item{mark_imputed}{Logical. If \code{TRUE}, per-study rows where the
 displayed point estimate or interval was not taken directly from reported
-values are flagged with \eqn{\dagger} and \eqn{*} respectively.
-Default \code{TRUE}.}
+values are flagged with \eqn{\dagger}{dagger} and \eqn{\ast}{*},
+respectively. Default \code{TRUE}.}
 
 \item{file_png}{Optional file path. If supplied, the plot is saved as a PNG
 at 300 dpi in addition to being displayed.}
@@ -101,7 +101,7 @@ at 300 dpi in addition to being displayed.}
 in addition to being displayed.}
 }
 \value{
-The \pkg{forestploter} plot object, returned invisibly. The plot is
+The \code{forestploter} plot object, returned invisibly. The plot is
 also rendered as a side effect. If \code{file_png} or \code{file_pdf} are
 supplied, the plot is additionally saved to those paths.
 }
@@ -110,14 +110,15 @@ Produces a forest plot for net benefit (NB), relative utility (RU),
 sensitivity, or specificity from a fitted Bayesian trivariate meta-analysis.
 Per-study point estimates and intervals are displayed alongside the pooled
 posterior estimate and the 95\% prediction interval for a new center.
-For the forest plot for net benefit, the posterior probability \eqn{P(\text{useful})}
+For the forest plot for net benefit, the posterior probability
+\eqn{P(\mathrm{useful})}{P(useful)}
 that the model is useful at a new center is also shown.
 
 Per-study point estimates and intervals are determined by a priority
 hierarchy: reported values from \code{data} take precedence, followed by
 observed or analytically derived values, followed by model-based posterior
-summaries. Imputed values are flagged with \eqn{\dagger} (point estimates)
-and \eqn{*} (intervals) when \code{mark_imputed = TRUE}.
+summaries. Imputed values are flagged with \eqn{\dagger}{dagger} (point estimates)
+and \eqn{\ast}{*} (intervals) when \code{mark_imputed = TRUE}.
 }
 \details{
 Studies are sorted in ascending order of the displayed point estimate.

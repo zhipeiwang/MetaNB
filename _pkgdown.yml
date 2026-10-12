@@ -3,6 +3,7 @@ url: https://zhipeiwang.github.io/MetaNB/
 
 template:
   bootstrap: 5
+  math-rendering: katex
 
 navbar:
   structure:
