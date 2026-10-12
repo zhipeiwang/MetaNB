@@ -4,3 +4,9 @@
 ^dev$
 ^doc$
 ^Meta$
+^^_pkgdown\\.yml$$
+^^pkgdown-preview$$
+^^vignettes/\\.quarto$$
+^^vignettes/Introduction_to_MetaNB_cache$$
+^^vignettes/Introduction_to_MetaNB_files$$
+^docs$

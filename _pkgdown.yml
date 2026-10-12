@@ -1,0 +1,27 @@
+url: https://zhipeiwang.github.io/MetaNB/
+
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left: [intro, reference, articles]
+    right: [search, github]
+
+reference:
+- title: "Model fitting"
+  contents:
+  - MA_NB_tri
+
+- title: "Summaries and visualization"
+  contents:
+  - summarize_tri_ma
+  - plot_forest
+
+- title: "Example data"
+  contents:
+  - data_ADNEXCA125
+
+redirects:
+  - ["Introduction_to_MetaNB.html", "articles/Introduction_to_MetaNB.html"]

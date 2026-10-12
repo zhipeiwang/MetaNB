@@ -1,0 +1,4 @@
+/.quarto/
+**/*.quarto_ipynb
+/Introduction_to_MetaNB_cache/
+/Introduction_to_MetaNB_files/
