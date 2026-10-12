@@ -12,15 +12,31 @@ value-of-information metrics, including expected value of perfect and
 partial perfect information, to quantify uncertainty for the decision to
 implement the model in care across heterogeneous settings.
 
+## See also
+
+Useful links:
+
+- <https://zhipeiwang.github.io/MetaNB/>
+
+- <https://github.com/zhipeiwang/MetaNB>
+
+- Report bugs at <https://github.com/zhipeiwang/MetaNB/issues>
+
 ## Author
 
 **Maintainer**: Junfeng Wang <wangjunfeng7@gmail.com>
-([ORCID](https://orcid.org/0000-0001-5157-5355))
+(0000-0001-5157-5355)
 
 Authors:
 
-- Kim (Zhipei) Wang <wzpskye@gmail.com>
-  ([ORCID](https://orcid.org/0009-0002-9839-9138))
+- Kim (Zhipei) Wang <wzpskye@gmail.com> (0009-0002-9839-9138)
 
 - Laure Wynants <laure.wynants@maastrichtuniversity.nl>
-  ([ORCID](https://orcid.org/0000-0002-3037-122X))
+  (0000-0002-3037-122X)
+
+- Mohsen Sadatsafavi <mohsen.sadatsafavi@ubc.ca> (0000-0002-0419-7862)
+
+Other contributors:
+
+- Andrea Gabrio <a.gabrio@maastrichtuniversity.nl> (0000-0002-7650-4534)
+  \[contributor\]

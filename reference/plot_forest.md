@@ -5,14 +5,14 @@ sensitivity, or specificity from a fitted Bayesian trivariate
 meta-analysis. Per-study point estimates and intervals are displayed
 alongside the pooled posterior estimate and the 95% prediction interval
 for a new center. For the forest plot for net benefit, the posterior
-probability \\P(\text{useful})\\ that the model is useful at a new
+probability \\P(\mathrm{useful})\\ that the model is useful at a new
 center is also shown.
 
 Per-study point estimates and intervals are determined by a priority
 hierarchy: reported values from `data` take precedence, followed by
 observed or analytically derived values, followed by model-based
 posterior summaries. Imputed values are flagged with \\\dagger\\ (point
-estimates) and \\\*\\ (intervals) when `mark_imputed = TRUE`.
+estimates) and \\\ast\\ (intervals) when `mark_imputed = TRUE`.
 
 ## Usage
 
@@ -113,7 +113,7 @@ plot_forest(
 - plot_col_width:
 
   Integer. Width in characters of the blank column used internally by
-  the package forestploter to render the plot panel. Increase if the
+  the package `forestploter` to render the plot panel. Increase if the
   plot appears cramped. Default `50`.
 
 - reported_low_col:
@@ -137,14 +137,14 @@ plot_forest(
   studies lacking reported intervals. If `NULL`, defaults are chosen by
   metric: `"frequentist"` for NB (Sande et al. 2020), and also
   `"frequentist"` for sensitivity and specificity (Wilson's method via
-  the `madad` function in the pacakge mada), and `"model"` (posterior
+  the `madad` function in the package `mada`), and `"model"` (posterior
   CrI) for RU.
 
 - mark_imputed:
 
   Logical. If `TRUE`, per-study rows where the displayed point estimate
   or interval was not taken directly from reported values are flagged
-  with \\\dagger\\ and \\\*\\ respectively. Default `TRUE`.
+  with \\\dagger\\ and \\\ast\\, respectively. Default `TRUE`.
 
 - file_png:
 
@@ -158,7 +158,7 @@ plot_forest(
 
 ## Value
 
-The forestploter plot object, returned invisibly. The plot is also
+The `forestploter` plot object, returned invisibly. The plot is also
 rendered as a side effect. If `file_png` or `file_pdf` are supplied, the
 plot is additionally saved to those paths.
 
