@@ -22,3 +22,6 @@ reference:
 - title: "Example data"
   contents:
   - data_ADNEXCA125
+
+redirects:
+  - ["Introduction_to_MetaNB.html", "articles/Introduction_to_MetaNB.html"]
