@@ -1,8 +1,5 @@
 url: https://zhipeiwang.github.io/MetaNB/
 
-# Use a separate directory while developing the new website.
-# Preventing pkgdown from overwriting the existing docs/ website.
-destination: pkgdown-preview
 
 template:
   bootstrap: 5
